@@ -1,11 +1,12 @@
 {% extends "base.html" %}
 {% block title %}Admin Search | {{ settings.branding.instance_name }}{% endblock %}
+{% block page_classes %} page--wide page--admin{% endblock %}
 {% block content %}
   <h2>Admin search</h2>
-  <form method="get" action="/admin/search" hx-get="/admin/search" hx-target="#admin-search-results" hx-swap="outerHTML" hx-push-url="true">
+  <form method="get" action="/admin/search" hx-get="/admin/search" hx-target="#admin-search-results" hx-swap="outerHTML" hx-push-url="true" hx-indicator="#admin-search-indicator" hx-disabled-elt="find button">
     <p><label>Search<br><input name="q" value="{{ page.q }}"></label></p>
     <p><label><input type="checkbox" name="paste_content" value="true" {% if page.paste_content %}checked{% endif %}> Include paste content</label></p>
-    <p><button type="submit">Search</button>{% if page.q %} <a href="/admin/search">Clear</a>{% endif %}</p>
+    <p><button type="submit">Search</button>{% if page.q %} <a href="/admin/search">Clear</a>{% endif %} <span id="admin-search-indicator" class="htmx-indicator">Loading...</span></p>
   </form>
 
   {% include "admin_search_results.html" %}

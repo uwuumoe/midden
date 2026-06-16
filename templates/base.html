@@ -13,7 +13,7 @@
   <style>:root { --accent: {{ settings.branding.accent_color }}; } {{ settings.branding.custom_css | safe }}</style>
 </head>
 <body class="theme-{{ settings.branding.dark_mode }}" x-data>
-  <div class="page">
+  <div class="page{% block page_classes %}{% endblock %}">
     <header class="site-head">
       <a class="brand" href="/">
         {% if settings.branding.logo_url %}
@@ -36,7 +36,7 @@
         {% if current_user.role == "moderator" or current_user.role == "admin" or current_user.role == "owner" %}<a href="/admin/reports">Reports</a>{% endif %}
         <form class="inline" method="post" action="/auth/logout"><button type="submit" class="link-button">Logout</button></form>
       {% else %}
-        <a href="/auth/login">Login</a>
+        <a href="/auth/login">Log in</a>
         {% if settings.policy.signup == "open" %}<a href="/register">Register</a>{% endif %}
       {% endif %}
     </nav>
@@ -50,11 +50,13 @@
     </main>
 
     <footer class="site-foot">
-      {% for link in settings.branding.footer_links %}
-        <a href="{{ link.href }}">{{ link.label }}</a>{% if not loop.last %} | {% endif %}
-      {% endfor %}
-      {% if settings.branding.abuse_email %} | <a href="mailto:{{ settings.branding.abuse_email }}">Abuse</a>{% endif %}
-      {% if settings.branding.contact_url %} | <a href="{{ settings.branding.contact_url }}">Contact</a>{% endif %}
+      <nav class="foot-links" aria-label="Footer">
+        {% for link in settings.branding.footer_links %}
+          <a href="{{ link.href }}">{{ link.label }}</a>
+        {% endfor %}
+        {% if settings.branding.abuse_email %}<a href="mailto:{{ settings.branding.abuse_email }}">Abuse</a>{% endif %}
+        {% if settings.branding.contact_url %}<a href="{{ settings.branding.contact_url }}">Contact</a>{% endif %}
+      </nav>
       <p>{{ settings.branding.instance_name }}</p>
     </footer>
   </div>
@@ -68,6 +70,6 @@
   </datalist>
   <script defer src="/static/vendor/htmx.min.js"></script>
   <script defer src="/static/vendor/alpine.min.js"></script>
-  <script src="/static/midden.js"></script>
+  <script defer src="/static/midden.js"></script>
 </body>
 </html>

@@ -1,9 +1,10 @@
 {% extends "base.html" %}
 {% block title %}Reports | {{ settings.branding.instance_name }}{% endblock %}
+{% block page_classes %} page--wide page--admin{% endblock %}
 {% block content %}
   <h2>Reports</h2>
 
-  <form id="reports-filters" method="get" action="/admin/reports" hx-get="/admin/reports" hx-target="#reports-results" hx-swap="outerHTML" hx-push-url="true">
+  <form id="reports-filters" method="get" action="/admin/reports" hx-get="/admin/reports" hx-target="#reports-results" hx-swap="outerHTML" hx-push-url="true" hx-indicator="#reports-filter-indicator" hx-disabled-elt="find button">
     <p><label>State<br>
       <select name="state">
         <option value="" {% if not page.filters.state %}selected{% endif %}>any</option>
@@ -21,7 +22,7 @@
     </label></p>
     <p><label>Reason contains<br><input name="reason" value="{{ page.filters.reason }}"></label></p>
     <p><label>Created in last days<br><input type="number" min="1" name="days" value="{{ page.filters.days or "" }}"></label></p>
-    <p><button type="submit">Filter reports</button> <a href="/admin/reports">Clear</a></p>
+    <p><button type="submit">Filter reports</button> <a href="/admin/reports">Clear</a> <span id="reports-filter-indicator" class="htmx-indicator">Loading...</span></p>
   </form>
 
   {% include "reports_table.html" %}

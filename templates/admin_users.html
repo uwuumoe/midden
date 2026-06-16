@@ -1,13 +1,14 @@
 {% extends "base.html" %}
 {% block title %}Users | {{ settings.branding.instance_name }}{% endblock %}
+{% block page_classes %} page--wide page--admin{% endblock %}
 {% block content %}
   <h2>Users</h2>
 
   <h3>Create user</h3>
-  <form method="post" action="/admin/users" hx-post="/admin/users" hx-target="#admin-users-lists" hx-swap="outerHTML">
-    <p><label>Email<br><input type="email" name="email" required></label></p>
-    <p><label>Username<br><input name="username" required></label></p>
-    <p><label>Password<br><input type="password" name="password" required></label></p>
+  <form method="post" action="/admin/users" hx-post="/admin/users" hx-target="#admin-users-lists" hx-swap="outerHTML" hx-indicator="#admin-users-indicator" hx-disabled-elt="find button">
+    <p><label>Email<br><input type="email" name="email" autocomplete="email" required></label></p>
+    <p><label>Username<br><input name="username" autocomplete="username" required></label></p>
+    <p><label>Password<br><input type="password" name="password" autocomplete="new-password" required></label></p>
     <p><label>Role<br>
       <select name="role">
         <option value="user">user</option>
@@ -16,11 +17,11 @@
         <option value="owner">owner</option>
       </select>
     </label></p>
-    <p><button type="submit">Create user</button></p>
+    <p><button type="submit">Create user</button> <span id="admin-users-indicator" class="htmx-indicator">Saving...</span></p>
   </form>
 
   <h3>Create invite</h3>
-  <form method="post" action="/admin/users/invites" hx-post="/admin/users/invites" hx-target="#admin-users-lists" hx-swap="outerHTML">
+  <form method="post" action="/admin/users/invites" hx-post="/admin/users/invites" hx-target="#admin-users-lists" hx-swap="outerHTML" hx-indicator="#admin-invites-indicator" hx-disabled-elt="find button">
     <p><label>Role<br>
       <select name="role">
         <option value="user">user</option>
@@ -29,7 +30,7 @@
       </select>
     </label></p>
     <p><label>Expires after hours, blank for no expiry<br><input type="number" min="1" name="expires_hours"></label></p>
-    <p><button type="submit">Create invite</button></p>
+    <p><button type="submit">Create invite</button> <span id="admin-invites-indicator" class="htmx-indicator">Saving...</span></p>
   </form>
 
   {% include "admin_users_lists.html" %}

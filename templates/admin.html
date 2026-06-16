@@ -1,23 +1,28 @@
 {% extends "base.html" %}
 {% block title %}Admin | {{ settings.branding.instance_name }}{% endblock %}
+{% block page_classes %} page--wide page--admin{% endblock %}
 {% block content %}
   <h2>Admin settings</h2>
-  <p><a href="/admin/users">Users</a> | <a href="/admin/search">Search files and pastes</a> | <a href="/admin/reports">Reports</a></p>
+  <nav class="admin-nav" aria-label="Admin">
+    <a href="/admin/users">Users</a>
+    <a href="/admin/search">Search files and pastes</a>
+    <a href="/admin/reports">Reports</a>
+  </nav>
 
-  <form method="post" action="/admin/settings" x-data="{ dirty: false, featureApi: {% if settings.features.api %}true{% else %}false{% endif %}, featureReports: {% if settings.features.reports %}true{% else %}false{% endif %}, featureUrlUpload: {% if settings.features.upload_by_url %}true{% else %}false{% endif %}, scanningEnabled: {% if settings.scanning.enabled %}true{% else %}false{% endif %}, signedInternalUrls: {% if settings.delivery.signed_internal_urls %}true{% else %}false{% endif %} }" x-on:input="dirty = true" x-on:change="dirty = true">
-    <p class="notice" x-show="dirty">Unsaved settings changes.</p>
-    <p><button type="button" x-on:click="Array.from($root.querySelectorAll('details.settings-section')).forEach((section) => section.open = true)">Expand all</button> <button type="button" x-on:click="Array.from($root.querySelectorAll('details.settings-section')).forEach((section) => section.open = false)">Collapse all</button></p>
-    <details class="settings-section" open>
+  <form method="post" action="/admin/settings" data-admin-settings-form x-data="{ dirty: false, featureApi: {% if settings.features.api %}true{% else %}false{% endif %}, featureReports: {% if settings.features.reports %}true{% else %}false{% endif %}, featureUrlUpload: {% if settings.features.upload_by_url %}true{% else %}false{% endif %}, scanningEnabled: {% if settings.scanning.enabled %}true{% else %}false{% endif %}, signedInternalUrls: {% if settings.delivery.signed_internal_urls %}true{% else %}false{% endif %} }" x-on:input="dirty = true" x-on:change="dirty = true">
+    <p class="notice" x-show="dirty" x-cloak>Unsaved settings changes.</p>
+    <p class="settings-actions"><button type="button" x-on:click="Array.from($root.querySelectorAll('details.settings-section')).forEach((section) => section.open = true)">Expand all</button> <button type="button" x-on:click="Array.from($root.querySelectorAll('details.settings-section')).forEach((section) => section.open = false)">Collapse all</button></p>
+    <details class="settings-section" data-settings-section="features" open>
       <summary>Features</summary>
     <p><label><input type="checkbox" name="feature_files" {% if settings.features.files %}checked{% endif %}> Files</label></p>
     <p><label><input type="checkbox" name="feature_pastes" {% if settings.features.pastes %}checked{% endif %}> Pastes</label></p>
     <p><label><input type="checkbox" name="feature_accounts" {% if settings.features.accounts %}checked{% endif %}> Accounts</label></p>
     <p><label><input type="checkbox" name="feature_api" x-model="featureApi" {% if settings.features.api %}checked{% endif %}> API</label></p>
-    <p class="field-note" x-show="!featureApi">API docs, API tokens, and JSON endpoints stay unavailable while API is disabled.</p>
+    <p class="field-note" x-show="!featureApi" x-cloak>API docs, API tokens, and JSON endpoints stay unavailable while API is disabled.</p>
     <p><label><input type="checkbox" name="feature_reports" x-model="featureReports" {% if settings.features.reports %}checked{% endif %}> Reports</label></p>
-    <p class="field-note" x-show="!featureReports">Public report links and moderation report queues stay hidden while reports are disabled.</p>
+    <p class="field-note" x-show="!featureReports" x-cloak>Public report links and moderation report queues stay hidden while reports are disabled.</p>
     <p><label><input type="checkbox" name="feature_upload_by_url" x-model="featureUrlUpload" {% if settings.features.upload_by_url %}checked{% endif %}> URL upload</label></p>
-    <p class="field-note" x-show="!featureUrlUpload">URL upload security settings are kept, but users cannot submit remote URLs while this is disabled.</p>
+    <p class="field-note" x-show="!featureUrlUpload" x-cloak>URL upload security settings are kept, but users cannot submit remote URLs while this is disabled.</p>
     <p><label><input type="checkbox" name="feature_oidc_login" {% if settings.features.oidc_login %}checked{% endif %}> OIDC login</label></p>
     <p><label><input type="checkbox" name="feature_preview_pages" {% if settings.features.preview_pages %}checked{% endif %}> Preview pages</label></p>
     <p><label><input type="checkbox" name="feature_public_browse" {% if settings.features.public_browse %}checked{% endif %}> Public browse</label></p>
@@ -25,7 +30,7 @@
     <p><label><input type="checkbox" name="feature_paste_editing" {% if settings.features.paste_editing %}checked{% endif %}> Paste editing for owners</label></p>
     </details>
 
-    <details class="settings-section" open>
+    <details class="settings-section" data-settings-section="policy" open>
       <summary>Policy</summary>
     <p><label>Signup<br>
       <select name="signup">
@@ -65,7 +70,7 @@
     </label></p>
     </details>
 
-    <details class="settings-section" open>
+    <details class="settings-section" data-settings-section="limits" open>
       <summary>Limits</summary>
     <p><label>Max upload bytes<br><input type="number" min="1" name="max_upload_bytes" value="{{ settings.limits.max_upload_bytes }}" required></label></p>
     <p><label>Max paste bytes<br><input type="number" min="1" name="max_paste_bytes" value="{{ settings.limits.max_paste_bytes }}" required></label></p>
@@ -83,7 +88,7 @@
     <p><label>Item count<br><input type="number" min="1" name="user_item_count" value="{{ page.user_quota.item_count or "" }}"></label></p>
     </details>
 
-    <details class="settings-section" open>
+    <details class="settings-section" data-settings-section="security" open>
       <summary>Security</summary>
     <p><label><input type="checkbox" name="secure_cookies" {% if settings.security.secure_cookies %}checked{% endif %}> Secure cookies</label></p>
     <p><label><input type="checkbox" name="reject_mime_mismatch" {% if settings.security.reject_mime_mismatch %}checked{% endif %}> Reject MIME mismatches</label></p>
@@ -93,7 +98,7 @@
         <option value="attachment" {% if settings.security.content_disposition == "attachment" %}selected{% endif %}>attachment</option>
       </select>
     </label></p>
-    <section x-show="featureUrlUpload">
+    <section x-show="featureUrlUpload" x-cloak>
       <h4>URL upload</h4>
       <p><label><input type="checkbox" name="url_block_private_ips" {% if settings.security.url_upload.block_private_ips %}checked{% endif %}> Block private, loopback, and link-local IPs</label></p>
       <p><label>Max redirects<br><input type="number" min="0" name="url_max_redirects" value="{{ settings.security.url_upload.max_redirects }}"></label></p>
@@ -102,31 +107,31 @@
     </section>
     </details>
 
-    <details class="settings-section" open>
+    <details class="settings-section" data-settings-section="delivery" open>
       <summary>Delivery</summary>
     <p><label>Public file cache seconds<br><input type="number" min="0" name="delivery_public_cache_seconds" value="{{ settings.delivery.public_cache_seconds }}"></label></p>
     <p><label>Static asset cache seconds<br><input type="number" min="0" name="delivery_static_cache_seconds" value="{{ settings.delivery.static_cache_seconds }}"></label></p>
     <p><label><input type="checkbox" name="delivery_signed_internal_urls" x-model="signedInternalUrls" {% if settings.delivery.signed_internal_urls %}checked{% endif %}> Signed internal raw file URLs</label></p>
-    <section x-show="signedInternalUrls">
-      <p><label>Internal URL secret<br><input name="delivery_internal_url_secret" value="{{ settings.delivery.internal_url_secret or "" }}"></label></p>
+    <section x-show="signedInternalUrls" x-cloak>
+      <p class="secret-field"><label>Internal URL secret<br><input data-secret-input type="password" name="delivery_internal_url_secret" value="{{ settings.delivery.internal_url_secret or "" }}"></label> <button type="button" data-secret-toggle>Show</button></p>
       <p><label>Internal URL TTL seconds<br><input type="number" min="1" name="delivery_internal_url_ttl_seconds" value="{{ settings.delivery.internal_url_ttl_seconds }}"></label></p>
     </section>
     </details>
 
-    <details class="settings-section" open>
+    <details class="settings-section" data-settings-section="processing" open>
       <summary>Processing</summary>
     <p><label><input type="checkbox" name="processing_metadata_extraction" {% if settings.processing.metadata_extraction %}checked{% endif %}> Extract file metadata</label></p>
     <p><label><input type="checkbox" name="processing_metadata_stripping" {% if settings.processing.metadata_stripping %}checked{% endif %}> Strip supported image metadata on upload</label></p>
     <p><label><input type="checkbox" name="processing_thumbnails" {% if settings.processing.thumbnails %}checked{% endif %}> Generate image thumbnail references</label></p>
     </details>
 
-    <details class="settings-section" open>
+    <details class="settings-section" data-settings-section="discovery" open>
       <summary>Discovery</summary>
     <p><label><input type="checkbox" name="discovery_robots_index" {% if settings.discovery.robots_index %}checked{% endif %}> Allow robots to index the browse page</label></p>
     <p><label>Browse page size<br><input type="number" min="1" max="1000" name="discovery_page_size" value="{{ settings.discovery.page_size }}"></label></p>
     </details>
 
-    <details class="settings-section" open>
+    <details class="settings-section" data-settings-section="jobs" open>
       <summary>Background jobs</summary>
     <p><label><input type="checkbox" name="jobs_enabled" {% if settings.jobs.enabled %}checked{% endif %}> Run internal background jobs</label></p>
     <p><label>Interval seconds<br><input type="number" min="30" name="jobs_interval_seconds" value="{{ settings.jobs.interval_seconds }}"></label></p>
@@ -135,10 +140,11 @@
     <p><label>Storage verify interval seconds<br><input type="number" min="60" name="jobs_storage_verify_interval_seconds" value="{{ settings.jobs.storage_verify_interval_seconds }}"></label></p>
     </details>
 
-    <details class="settings-section" open>
+    <details class="settings-section" data-settings-section="rate-limits" open>
       <summary>Rate limits</summary>
-    <table>
-      <tr><th>Action</th><th>Enabled</th><th>Requests</th><th>Window seconds</th></tr>
+    <table class="table-card">
+      <thead><tr><th>Action</th><th>Enabled</th><th>Requests</th><th>Window seconds</th></tr></thead>
+      <tbody>
       {% for row in [
         ("upload_file", "Upload file", "rl_upload_file", settings.security.rate_limits.upload_file | default({})),
         ("upload_by_url", "URL upload", "rl_upload_by_url", settings.security.rate_limits.upload_by_url | default({})),
@@ -148,20 +154,21 @@
         ("tus_create", "Tus create", "rl_tus_create", settings.security.rate_limits.tus_create | default({}))
       ] %}
         <tr>
-          <td>{{ row.1 }}</td>
-          <td><input type="checkbox" name="{{ row.2 }}_enabled" {% if row.3.enabled | default(false) %}checked{% endif %}></td>
-          <td><input type="number" min="1" name="{{ row.2 }}_requests" value="{{ row.3.requests | default("") }}"></td>
-          <td><input type="number" min="1" name="{{ row.2 }}_window" value="{{ row.3.window_seconds | default("") }}"></td>
+          <td data-label="Action">{{ row.1 }}</td>
+          <td data-label="Enabled"><input type="checkbox" name="{{ row.2 }}_enabled" {% if row.3.enabled | default(false) %}checked{% endif %}></td>
+          <td data-label="Requests"><input type="number" min="1" name="{{ row.2 }}_requests" value="{{ row.3.requests | default("") }}"></td>
+          <td data-label="Window seconds"><input type="number" min="1" name="{{ row.2 }}_window" value="{{ row.3.window_seconds | default("") }}"></td>
         </tr>
       {% endfor %}
+      </tbody>
     </table>
     </details>
 
-    <details class="settings-section" open>
+    <details class="settings-section" data-settings-section="scanning" open>
       <summary>Scanning</summary>
     <p><label><input type="checkbox" name="scanning_enabled" x-model="scanningEnabled" {% if settings.scanning.enabled %}checked{% endif %}> Enable scanners</label></p>
-    <p class="field-note" x-show="!scanningEnabled">Scanner configuration is saved, but uploads will not be checked while scanners are disabled.</p>
-    <section x-show="scanningEnabled">
+    <p class="field-note" x-show="!scanningEnabled" x-cloak>Scanner configuration is saved, but uploads will not be checked while scanners are disabled.</p>
+    <section x-show="scanningEnabled" x-cloak>
     <p><label>Default failure behavior<br>
       <select name="default_on_error">
         <option value="allow" {% if settings.scanning.default_on_error == "allow" %}selected{% endif %}>allow</option>
@@ -174,18 +181,18 @@
     <p><label>Command scanner program<br><input name="command_scanner_program" value="{{ page.scanner.command_program }}"></label></p>
     <p><label>Command scanner args<br><input name="command_scanner_args" value="{{ page.scanner.command_args }}"></label></p>
     <p><label>Webhook scanner URL<br><input type="url" name="webhook_scanner_url" value="{{ page.scanner.webhook_url }}"></label></p>
-    <p><label>Webhook scanner secret<br><input name="webhook_scanner_secret" value="{{ page.scanner.webhook_secret }}"></label></p>
+    <p class="secret-field"><label>Webhook scanner secret<br><input data-secret-input type="password" name="webhook_scanner_secret" value="{{ page.scanner.webhook_secret }}"></label> <button type="button" data-secret-toggle>Show</button></p>
     <p><label>ClamAV socket<br><input name="clamav_socket" value="{{ page.scanner.clamav_socket }}"></label></p>
     </section>
     </details>
 
-    <details class="settings-section" open>
+    <details class="settings-section" data-settings-section="branding" open>
       <summary>Branding</summary>
     <p><label>Instance name<br><input name="instance_name" value="{{ settings.branding.instance_name }}" required></label></p>
     <p><label>Tagline<br><input name="tagline" value="{{ settings.branding.tagline }}"></label></p>
     <p><label>Logo URL<br><input name="logo_url" value="{{ settings.branding.logo_url or "" }}"></label></p>
     <p><label>Favicon URL<br><input name="favicon_url" value="{{ settings.branding.favicon_url or "" }}"></label></p>
-    <p><label>Accent color<br><input name="accent_color" value="{{ settings.branding.accent_color }}"></label></p>
+    <p class="accent-field"><label>Accent color<br><input data-accent-input name="accent_color" value="{{ settings.branding.accent_color }}"></label> <span class="accent-preview" data-accent-preview style="background: {{ settings.branding.accent_color }}" aria-hidden="true"></span></p>
     <p><label>Dark mode<br>
       <select name="dark_mode">
         <option value="auto" {% if settings.branding.dark_mode == "auto" %}selected{% endif %}>automatic</option>
@@ -202,6 +209,6 @@
     <p><label>Contact URL<br><input name="contact_url" value="{{ settings.branding.contact_url or "" }}"></label></p>
     </details>
 
-    <p><button type="submit">Save settings</button></p>
+    <p class="settings-save-bar"><button type="submit">Save settings</button> <span class="field-note" x-show="dirty" x-cloak>Unsaved changes</span></p>
   </form>
 {% endblock %}

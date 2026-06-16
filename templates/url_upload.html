@@ -7,6 +7,7 @@
     <p><label>Expire after, optional<br><input name="expires" list="expiry-presets" value="{{ settings.limits.default_file_expiry or "" }}" placeholder="never, 12h, 7d"></label></p>
     {% if settings.features.public_browse %}
       <p><label>Visibility<br><select name="visibility"><option value="unlisted">unlisted</option><option value="public">public browse</option></select></label></p>
+      <p class="field-note">Unlisted files require the link. Public browse lists the file on the browse page.</p>
     {% endif %}
     <p><button type="submit">Fetch and upload</button></p>
   </form>

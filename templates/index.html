@@ -5,7 +5,8 @@
     {% if settings.features.files %}
       <p>Uploads up to {{ page.max_upload }} are allowed.</p>
       <form method="post" action="/" enctype="multipart/form-data" data-browser-upload-form>
-        <label class="drop-zone" data-drop-zone>
+        <p id="upload-help" class="field-note">Choose a file, then keep this tab open until the upload finishes. Interrupted uploads can resume on this device.</p>
+        <label class="drop-zone" data-drop-zone aria-describedby="upload-help" tabindex="0">
           <input type="file" name="file" required>
           <span>Select or drop file</span>
         </label>
@@ -13,10 +14,15 @@
         <p><label>Expire after, optional<br><input name="expires" list="expiry-presets" value="{{ settings.limits.default_file_expiry or "" }}" placeholder="never, 12h, 7d"></label></p>
         {% if settings.features.public_browse %}
           <p><label>Visibility<br><select name="visibility"><option value="unlisted">unlisted</option><option value="public">public browse</option></select></label></p>
+          <p class="field-note">Unlisted files require the link. Public browse lists the file on the browse page.</p>
         {% endif %}
-        <p class="form-row"><button type="submit">Upload file</button></p>
+        <p class="form-row">
+          <button type="submit">Upload file</button>
+          <button type="button" hidden data-upload-cancel>Cancel upload</button>
+        </p>
         <progress class="upload-progress" max="100" value="0" hidden data-upload-progress></progress>
-        <div class="notice" hidden data-upload-status></div>
+        <p class="field-note" hidden data-upload-resume></p>
+        <div id="upload-status" class="notice" hidden data-upload-status aria-live="polite"></div>
       </form>
     {% else %}
       <p>File uploads are disabled on this instance.</p>

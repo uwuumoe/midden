@@ -1,36 +1,42 @@
 <section id="admin-search-results" aria-live="polite">
   {% if page.q %}
-    <h3>Files</h3>
+    <h3 data-results-heading>Files ({{ page.files | length }})</h3>
     {% if page.files %}
-      <table>
-        <tr><th>ID</th><th>Name</th><th>Type</th><th>Size</th><th>Image</th><th>State</th></tr>
+      <table class="table-card">
+        <thead><tr><th>ID</th><th>Name</th><th>Type</th><th>Size</th><th>Image</th><th>State</th><th>Actions</th></tr></thead>
+        <tbody>
         {% for file in page.files %}
           <tr>
-            <td><a href="/{{ file.public_id }}{% if file.extension %}.{{ file.extension }}{% endif %}">{{ file.public_id }}</a></td>
-            <td>{{ file.original_filename or "" }}</td>
-            <td>{{ file.content_type or "" }}</td>
-            <td>{{ human_bytes(file.size_bytes) }}</td>
-            <td>{% if file.image_width and file.image_height %}{{ file.image_width }}x{{ file.image_height }}{% endif %}</td>
-            <td>{{ file.state }}</td>
+            <td data-label="ID"><a href="/{{ file.public_id }}{% if file.extension %}.{{ file.extension }}{% endif %}">{{ file.public_id }}</a></td>
+            <td data-label="Name">{{ file.original_filename or "" }}</td>
+            <td data-label="Type">{{ file.content_type or "" }}</td>
+            <td data-label="Size">{{ human_bytes(file.size_bytes) }}</td>
+            <td data-label="Image">{% if file.image_width and file.image_height %}{{ file.image_width }}x{{ file.image_height }}{% endif %}</td>
+            <td data-label="State"><span class="status-badge status-badge--{{ file.state }}">{{ file.state }}</span></td>
+            <td data-label="Actions"><a href="/admin/items/file/{{ file.public_id }}">Moderate</a></td>
           </tr>
         {% endfor %}
+        </tbody>
       </table>
     {% else %}
       <p>No files matched.</p>
     {% endif %}
 
-    <h3>Pastes</h3>
+    <h3>Pastes ({{ page.pastes | length }})</h3>
     {% if page.pastes %}
-      <table>
-        <tr><th>ID</th><th>Title</th><th>Syntax</th><th>State</th></tr>
+      <table class="table-card">
+        <thead><tr><th>ID</th><th>Title</th><th>Syntax</th><th>State</th><th>Actions</th></tr></thead>
+        <tbody>
         {% for paste in page.pastes %}
           <tr>
-            <td><a href="/p/{{ paste.public_id }}">{{ paste.public_id }}</a></td>
-            <td>{{ paste.title or "" }}</td>
-            <td>{{ paste.syntax or "" }}</td>
-            <td>{{ paste.state }}</td>
+            <td data-label="ID"><a href="/p/{{ paste.public_id }}">{{ paste.public_id }}</a></td>
+            <td data-label="Title">{{ paste.title or "" }}</td>
+            <td data-label="Syntax">{{ paste.syntax or "" }}</td>
+            <td data-label="State"><span class="status-badge status-badge--{{ paste.state }}">{{ paste.state }}</span></td>
+            <td data-label="Actions"><a href="/admin/items/paste/{{ paste.public_id }}">Moderate</a></td>
           </tr>
         {% endfor %}
+        </tbody>
       </table>
     {% else %}
       <p>No pastes matched.</p>

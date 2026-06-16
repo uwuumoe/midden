@@ -11,6 +11,8 @@
 
 * { box-sizing: border-box; }
 
+[x-cloak] { display: none !important; }
+
 body {
   margin: 0;
   background: var(--bg);
@@ -32,6 +34,22 @@ select:focus-visible {
 .page {
   width: min(760px, calc(100% - 24px));
   margin: 28px auto 16px;
+  text-align: center;
+}
+
+.page--wide {
+  width: min(1180px, calc(100% - 32px));
+}
+
+.page--admin,
+.page--account {
+  text-align: left;
+}
+
+.page--admin .site-head,
+.page--account .site-head,
+.page--admin .site-nav,
+.page--account .site-nav {
   text-align: center;
 }
 
@@ -61,6 +79,35 @@ select:focus-visible {
 .site-foot {
   margin: 16px 0;
   font-size: 14px;
+}
+
+.foot-links,
+.admin-nav,
+.action-list,
+.result-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  align-items: center;
+  justify-content: center;
+}
+
+.foot-links:empty {
+  display: none;
+}
+
+.admin-nav {
+  justify-content: flex-start;
+  margin: 12px 0 20px;
+}
+
+.result-actions {
+  justify-content: center;
+}
+
+.page--admin .result-actions,
+.page--account .result-actions {
+  justify-content: flex-start;
 }
 
 .inline { display: inline; }
@@ -112,6 +159,11 @@ main { margin-top: 22px; }
   outline-offset: 4px;
 }
 
+.drop-zone:focus-within {
+  outline: 2px solid var(--ink);
+  outline-offset: 4px;
+}
+
 button,
 input,
 textarea,
@@ -137,6 +189,15 @@ select {
   background: white;
   color: var(--ink);
   padding: 7px;
+}
+
+input[type="checkbox"],
+input[type="radio"] {
+  inline-size: auto;
+  width: auto;
+  margin: 0 0.4rem 0 0;
+  padding: 0;
+  vertical-align: middle;
 }
 
 textarea {
@@ -170,6 +231,10 @@ textarea {
   font-size: 14px;
 }
 
+.field-note.error {
+  color: oklch(0.42 0.16 30);
+}
+
 .selected-file {
   margin: 4px 0 14px;
   overflow-wrap: anywhere;
@@ -187,9 +252,23 @@ button:disabled {
 
 button:disabled:hover { background: var(--surface); }
 
+.htmx-request button,
+button.is-loading {
+  cursor: wait;
+}
+
+.htmx-indicator {
+  display: none;
+}
+
+.htmx-request .htmx-indicator,
+.htmx-request.htmx-indicator {
+  display: inline;
+}
+
 .settings-section {
   border-block-start: 1px solid var(--line);
-  padding: 8px 0;
+  padding: 10px 0;
   text-align: left;
 }
 
@@ -198,6 +277,61 @@ button:disabled:hover { background: var(--surface); }
   cursor: pointer;
   font-size: 18px;
   font-weight: 700;
+}
+
+.settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.settings-save-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  border-block-start: 1px solid var(--line);
+  background: var(--bg);
+  padding: 10px 0;
+}
+
+.secret-field,
+.accent-field {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: end;
+}
+
+.accent-preview {
+  display: inline-block;
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 1px solid var(--line);
+  vertical-align: middle;
+}
+
+.scope-grid {
+  width: min(100%, 620px);
+  margin: 12px 0;
+  border: 1px solid var(--line);
+  padding: 8px 10px;
+}
+
+.scope-grid label {
+  display: inline-block;
+  margin: 3px 12px 3px 0;
+}
+
+.bulk-actions,
+.moderation-panel {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  margin: 16px 0;
+  padding: 10px;
+}
+
+.moderation-panel h3 {
+  margin-top: 0;
 }
 
 .homepage-blocks {
@@ -235,6 +369,39 @@ th { background: var(--surface); }
 
 .meta-table th { width: 30%; }
 
+.status-badge {
+  display: inline-block;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  padding: 1px 6px;
+  font-size: 13px;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.status-badge--active,
+.status-badge--public,
+.status-badge--verified,
+.status-badge--open {
+  border-color: var(--accent);
+}
+
+.status-badge--danger,
+.status-badge--deleted,
+.status-badge--disabled,
+.status-badge--takedown,
+.status-badge--quarantined {
+  border-color: oklch(0.5 0.17 30);
+  color: oklch(0.42 0.16 30);
+}
+
+.status-badge--muted,
+.status-badge--revoked,
+.status-badge--dismissed,
+.status-badge--unlisted {
+  color: var(--muted);
+}
+
 pre {
   overflow: auto;
   text-align: left;
@@ -256,6 +423,10 @@ pre {
 
 .upload-progress {
   width: min(100%, 620px);
+}
+
+.upload-progress[hidden] {
+  display: none;
 }
 
 .site-foot {
@@ -299,6 +470,7 @@ body.theme-dark select {
 
 @media (max-width: 520px) {
   .page { width: min(100% - 16px, 760px); margin-top: 18px; }
+  .page--wide { width: min(100% - 16px, 1180px); }
   .brand { font-size: 42px; }
   .drop-zone span { font-size: 18px; }
   .site-nav a,
@@ -306,11 +478,64 @@ body.theme-dark select {
     display: inline-block;
     margin: 3px 4px;
   }
-  table {
+  table:not(.table-card) {
     display: block;
     overflow-x: auto;
     font-size: 14px;
     white-space: nowrap;
   }
   td { white-space: normal; }
+
+  .table-card,
+  .table-card thead,
+  .table-card tbody,
+  .table-card tr,
+  .table-card th,
+  .table-card td {
+    display: block;
+    width: 100%;
+  }
+
+  .table-card thead {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .table-card tr {
+    border: 1px solid var(--line);
+    margin: 10px 0;
+    padding: 6px 0;
+  }
+
+  .table-card td,
+  .table-card th {
+    border: 0;
+    padding: 4px 8px;
+  }
+
+  .table-card td[data-label]::before {
+    content: attr(data-label) ": ";
+    display: inline;
+    color: var(--muted);
+    font-weight: 700;
+  }
+
+  .admin-nav,
+  .settings-actions,
+  .result-actions,
+  .action-list {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .admin-nav a,
+  .result-actions a,
+  .action-list a,
+  .action-list button,
+  .settings-actions button {
+    width: 100%;
+  }
 }

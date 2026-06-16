@@ -8,16 +8,24 @@
     {% if page.preview.is_image %}<meta property="og:image" content="{{ page.absolute_raw_url }}">{% endif %}
   {% endif %}
 {% endblock %}
-{% block content %}
+  {% block content %}
   <h2>{% if page.file.original_filename %}{{ page.file.original_filename }}{% else %}File {{ page.file.public_id }}{% endif %}</h2>
-  <table class="meta-table">
-    <tr><th>Size</th><td>{{ page.human_size }}</td></tr>
-    <tr><th>Type</th><td>{{ page.file.content_type }}</td></tr>
-    <tr><th>ID</th><td>{{ page.file.public_id }}</td></tr>
+  <table class="meta-table table-card">
+    <tbody>
+    <tr><th>Size</th><td data-label="Size">{{ page.human_size }}</td></tr>
+    <tr><th>Type</th><td data-label="Type">{{ page.file.content_type }}</td></tr>
+    <tr><th>ID</th><td data-label="ID">{{ page.file.public_id }}</td></tr>
+    </tbody>
   </table>
-  <p><a href="{{ page.raw_url }}">Open raw file</a> | <a href="/delete/file/{{ page.file.public_id }}">Delete</a>{% if settings.features.reports %} | <a href="/report/file/{{ page.file.public_id }}">Report</a>{% endif %}</p>
+  <p class="result-actions">
+    <a href="{{ page.raw_url }}">Open raw file</a>
+    <button type="button" data-copy-value="{{ page.absolute_url }}">Copy page link</button>
+    <button type="button" data-copy-value="{{ page.absolute_raw_url }}">Copy raw link</button>
+    <a href="/delete/file/{{ page.file.public_id }}">Delete</a>
+    {% if settings.features.reports %}<a href="/report/file/{{ page.file.public_id }}">Report</a>{% endif %}
+  </p>
   {% if page.preview.is_image %}
-    <p><img class="file-preview-media" src="{{ page.raw_url }}" alt=""></p>
+    <p><img class="file-preview-media" src="{{ page.raw_url }}" alt="{% if page.file.original_filename %}{{ page.file.original_filename }}{% else %}File {{ page.file.public_id }}{% endif %}"></p>
   {% elif page.preview.text %}
     <pre><code>{{ page.preview.text }}</code></pre>
   {% endif %}

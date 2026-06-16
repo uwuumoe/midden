@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Account | {{ settings.branding.instance_name }}{% endblock %}
+{% block page_classes %} page--account{% endblock %}
 {% block content %}
   <h2>Account</h2>
   <p>{{ current_user.username }} ({{ current_user.role }})</p>
@@ -18,8 +19,8 @@
   <h3>Password</h3>
   {% if page.has_local_password %}
     <form method="post" action="/account/password">
-      <p><label>Current password<br><input type="password" name="current_password" required></label></p>
-      <p><label>New password<br><input type="password" name="new_password" required></label></p>
+      <p><label>Current password<br><input type="password" name="current_password" autocomplete="current-password" required></label></p>
+      <p><label>New password<br><input type="password" name="new_password" autocomplete="new-password" required></label></p>
       <p><button type="submit">Change password</button></p>
     </form>
   {% else %}
@@ -31,12 +32,12 @@
     {% if page.two_factor_enabled %}
       <p>Email-code two-factor authentication is enabled.</p>
       <form method="post" action="/account/two-factor/disable">
-        <p><label>Current password<br><input type="password" name="current_password" required></label></p>
+        <p><label>Current password<br><input type="password" name="current_password" autocomplete="current-password" required></label></p>
         <p><button type="submit">Disable two-factor</button></p>
       </form>
     {% elif page.smtp_enabled and page.email_verified %}
       <form method="post" action="/account/two-factor/enable">
-        <p><label>Current password<br><input type="password" name="current_password" required></label></p>
+        <p><label>Current password<br><input type="password" name="current_password" autocomplete="current-password" required></label></p>
         <p><button type="submit">Enable two-factor</button></p>
       </form>
     {% else %}
@@ -51,9 +52,9 @@
     <p><button type="submit">Deactivate account</button></p>
   </form>
 
-  <form method="get" action="/account" hx-get="/account" hx-target="#account-items" hx-swap="outerHTML" hx-push-url="true">
+  <form method="get" action="/account" hx-get="/account" hx-target="#account-items" hx-swap="outerHTML" hx-push-url="true" hx-trigger="submit, input changed delay:300ms" hx-indicator="#account-search-indicator" hx-disabled-elt="find button">
     <p><label>Search your items<br><input name="q" value="{{ page.q }}" placeholder="filename, id, syntax"></label></p>
-    <p><button type="submit">Search</button>{% if page.q %} <a href="/account">Clear</a>{% endif %}</p>
+    <p><button type="submit">Search</button>{% if page.q %} <a href="/account">Clear</a>{% endif %} <span id="account-search-indicator" class="htmx-indicator">Loading...</span></p>
   </form>
 
   {% include "account_items.html" %}

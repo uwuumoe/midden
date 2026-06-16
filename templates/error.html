@@ -2,5 +2,6 @@
 {% block title %}Error | {{ settings.branding.instance_name }}{% endblock %}
 {% block content %}
   <h2>Error</h2>
-  <p>{{ page.message }}</p>
+  <p class="notice error">{{ page.message }}</p>
+  <p class="result-actions"><a href="/">Return home</a>{% if current_user %}<a href="/account">Account</a>{% else %}<a href="/auth/login">Log in</a>{% endif %}</p>
 {% endblock %}

@@ -1,36 +1,40 @@
 <section id="account-items" aria-live="polite">
-  <h3>{% if page.q %}Matching files{% else %}Your recent files{% endif %}</h3>
+  <h3 data-results-heading>{% if page.q %}Matching files{% else %}Your recent files{% endif %} ({{ page.files | length }})</h3>
   {% if page.files %}
-    <table>
-      <tr><th>File</th><th>Type</th><th>Size</th><th>Image</th><th>State</th></tr>
+    <table class="table-card">
+      <thead><tr><th>File</th><th>Type</th><th>Size</th><th>Image</th><th>State</th></tr></thead>
+      <tbody>
       {% for file in page.files %}
         <tr>
-          <td><a href="/{{ file.public_id }}{% if file.extension %}.{{ file.extension }}{% endif %}">{{ file.original_filename or file.public_id }}</a></td>
-          <td>{{ file.content_type or "" }}</td>
-          <td>{{ human_bytes(file.size_bytes) }}</td>
-          <td>{% if file.image_width and file.image_height %}{{ file.image_width }}x{{ file.image_height }}{% endif %}</td>
-          <td>{{ file.state }}</td>
+          <td data-label="File"><a href="/{{ file.public_id }}{% if file.extension %}.{{ file.extension }}{% endif %}">{{ file.original_filename or file.public_id }}</a></td>
+          <td data-label="Type">{{ file.content_type or "" }}</td>
+          <td data-label="Size">{{ human_bytes(file.size_bytes) }}</td>
+          <td data-label="Image">{% if file.image_width and file.image_height %}{{ file.image_width }}x{{ file.image_height }}{% endif %}</td>
+          <td data-label="State"><span class="status-badge status-badge--{{ file.state }}">{{ file.state }}</span></td>
         </tr>
       {% endfor %}
+      </tbody>
     </table>
   {% else %}
-    <p>No files yet.</p>
+    <p>{% if page.q %}No files matched this search.{% else %}No files yet. <a href="/">Upload a file</a>.{% endif %}</p>
   {% endif %}
 
-  <h3>{% if page.q %}Matching pastes{% else %}Your recent pastes{% endif %}</h3>
+  <h3>{% if page.q %}Matching pastes{% else %}Your recent pastes{% endif %} ({{ page.pastes | length }})</h3>
   {% if page.pastes %}
-    <table>
-      <tr><th>Paste</th><th>Syntax</th><th>Size</th><th>State</th></tr>
+    <table class="table-card">
+      <thead><tr><th>Paste</th><th>Syntax</th><th>Size</th><th>State</th></tr></thead>
+      <tbody>
       {% for paste in page.pastes %}
         <tr>
-          <td><a href="/p/{{ paste.public_id }}">{{ paste.title or paste.public_id }}</a></td>
-          <td>{{ paste.syntax or "" }}</td>
-          <td>{{ paste.content | length }} B</td>
-          <td>{{ paste.state }}</td>
+          <td data-label="Paste"><a href="/p/{{ paste.public_id }}">{{ paste.title or paste.public_id }}</a></td>
+          <td data-label="Syntax">{{ paste.syntax or "" }}</td>
+          <td data-label="Size">{{ paste.content | length }} B</td>
+          <td data-label="State"><span class="status-badge status-badge--{{ paste.state }}">{{ paste.state }}</span></td>
         </tr>
       {% endfor %}
+      </tbody>
     </table>
   {% else %}
-    <p>No pastes yet.</p>
+    <p>{% if page.q %}No pastes matched this search.{% else %}No pastes yet. <a href="/p/new">Create a paste</a>.{% endif %}</p>
   {% endif %}
 </section>

@@ -2322,6 +2322,152 @@ mod tests {
             .unwrap()
     }
 
+    async fn response_body(response: Response) -> String {
+        String::from_utf8(
+            response
+                .into_body()
+                .collect()
+                .await
+                .unwrap()
+                .to_bytes()
+                .to_vec(),
+        )
+        .unwrap()
+    }
+
+    async fn admin_session_state() -> (AppState, String) {
+        let issuer = spawn_oidc_provider(serde_json::json!({
+            "sub": "unused-ui-admin",
+            "email": "unused-ui-admin@example.test",
+            "groups": ["admins"]
+        }))
+        .await;
+        let state = test_state(issuer).await;
+        let admin = state
+            .db
+            .create_user(
+                "ui-admin@example.test",
+                "ui-admin",
+                Some("password-hash"),
+                Role::Admin,
+            )
+            .await
+            .unwrap();
+        let session_token = util::secret_token();
+        state
+            .db
+            .create_session(
+                &admin.id,
+                &util::hash_token(&session_token),
+                util::now_ts() + 60,
+            )
+            .await
+            .unwrap();
+        (state, session_token)
+    }
+
+    #[tokio::test]
+    async fn admin_ui_exposes_wide_shell_and_settings_affordances() {
+        let (state, session_token) = admin_session_state().await;
+        let response = state
+            .router()
+            .oneshot(
+                Request::builder()
+                    .uri("/admin")
+                    .header(header::COOKIE, format!("midden_session={session_token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response_body(response).await;
+        assert!(body.contains("class=\"page page--wide page--admin\""));
+        assert!(body.contains("class=\"admin-nav\""));
+        assert!(body.contains("data-admin-settings-form"));
+        assert!(body.contains("class=\"settings-actions\""));
+        assert!(body.contains("class=\"settings-save-bar\""));
+        assert!(body.contains("data-settings-section=\"features\""));
+        assert!(body.contains("data-secret-input"));
+        assert!(body.contains("data-accent-preview"));
+        assert!(body.contains("x-cloak"));
+    }
+
+    #[tokio::test]
+    async fn static_assets_include_frontend_ux_helpers() {
+        let issuer = spawn_oidc_provider(serde_json::json!({
+            "sub": "unused-static-ui",
+            "email": "unused-static-ui@example.test",
+            "groups": ["admins"]
+        }))
+        .await;
+        let state = test_state(issuer).await;
+        let router = state.router();
+
+        let css_response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/static/midden.css")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(css_response.status(), StatusCode::OK);
+        let css = response_body(css_response).await;
+        assert!(css.contains(".page--wide"));
+        assert!(css.contains("[x-cloak]"));
+        assert!(css.contains(".status-badge"));
+        assert!(css.contains(".table-card"));
+        assert!(css.contains(".htmx-request"));
+        assert!(css.contains(".drop-zone:focus-within"));
+        assert!(css.contains("input[type=\"checkbox\"]"));
+        assert!(css.contains("inline-size: auto"));
+
+        let js_response = router
+            .oneshot(
+                Request::builder()
+                    .uri("/static/midden.js")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(js_response.status(), StatusCode::OK);
+        let js = response_body(js_response).await;
+        assert!(js.contains("htmx:beforeRequest"));
+        assert!(js.contains("data-copy-value"));
+        assert!(js.contains("data-secret-toggle"));
+        assert!(js.contains("midden:settings-section:"));
+        assert!(js.contains("data-upload-cancel"));
+    }
+
+    #[tokio::test]
+    async fn public_upload_page_exposes_stateful_controls_and_hints() {
+        let issuer = spawn_oidc_provider(serde_json::json!({
+            "sub": "unused-public-ui",
+            "email": "unused-public-ui@example.test",
+            "groups": ["admins"]
+        }))
+        .await;
+        let state = test_state(issuer).await;
+        let response = state
+            .router()
+            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response_body(response).await;
+        assert!(body.contains("data-upload-cancel"));
+        assert!(body.contains("data-upload-resume"));
+        assert!(body.contains("id=\"upload-status\""));
+        assert!(body.contains("aria-describedby=\"upload-help\""));
+        assert!(body.contains("No file selected"));
+    }
+
     #[tokio::test]
     async fn admin_settings_renders_without_user_role_quota() {
         let issuer = spawn_oidc_provider(serde_json::json!({

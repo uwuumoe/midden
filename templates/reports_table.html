@@ -1,4 +1,4 @@
-<section id="reports-results" aria-live="polite" x-data="{ selected: [] }">
+<section id="reports-results" aria-live="polite" x-data="{ selected: [], allReports: [{% for report in page.reports %}'{{ report.id }}'{% if not loop.last %}, {% endif %}{% endfor %}], bulkAction: 'resolve' }">
   {% if page.reports %}
     <form id="bulk-reports" method="post" action="/admin/reports/bulk" hx-post="/admin/reports/bulk" hx-target="#reports-results" hx-swap="outerHTML">
       <input type="hidden" name="filter_state" value="{{ page.filters.state }}">
@@ -6,21 +6,31 @@
       <input type="hidden" name="filter_reason" value="{{ page.filters.reason }}">
       <input type="hidden" name="filter_days" value="{{ page.filters.days or "" }}">
     </form>
-    <p><label>Bulk note<br><textarea form="bulk-reports" name="note" rows="3"></textarea></label></p>
-    <p class="muted"><span x-text="selected.length">0</span> selected</p>
-    <p>
-      <button form="bulk-reports" type="submit" name="action" value="resolve" x-bind:disabled="selected.length === 0">Resolve selected</button>
-      <button form="bulk-reports" type="submit" name="action" value="dismiss" x-bind:disabled="selected.length === 0">Dismiss selected</button>
-      <button form="bulk-reports" type="submit" name="action" value="quarantine" x-bind:disabled="selected.length === 0">Quarantine selected</button>
-      <button form="bulk-reports" type="submit" name="action" value="takedown" x-bind:disabled="selected.length === 0">Takedown selected</button>
-      <button form="bulk-reports" type="submit" name="action" value="legal_hold" x-bind:disabled="selected.length === 0">Legal hold selected</button>
-    </p>
-    <table>
-      <tr><th></th><th>Item</th><th>Reason</th><th>State</th><th>Details</th><th>Note</th><th>Actions</th></tr>
+    <div class="bulk-actions">
+      <p><label>Bulk note<br><textarea form="bulk-reports" name="note" rows="3"></textarea></label></p>
+      <p class="muted"><span x-text="selected.length">0</span> selected</p>
+      <p class="action-list">
+        <button type="button" x-on:click="selected = allReports.slice()">Select all</button>
+        <button type="button" x-on:click="selected = []" x-bind:disabled="selected.length === 0">Clear selection</button>
+        <label>Action
+          <select form="bulk-reports" name="action" x-model="bulkAction">
+            <option value="resolve">Resolve</option>
+            <option value="dismiss">Dismiss</option>
+            <option value="quarantine">Quarantine</option>
+            <option value="takedown">Takedown</option>
+            <option value="legal_hold">Legal hold</option>
+          </select>
+        </label>
+        <button form="bulk-reports" type="submit" x-bind:disabled="selected.length === 0" x-on:click="if (['quarantine','takedown','legal_hold'].includes(bulkAction) && !confirm('Apply this moderation action to selected reports?')) $event.preventDefault()">Apply to selected</button>
+      </p>
+    </div>
+    <table class="table-card">
+      <thead><tr><th>Select</th><th>Item</th><th>Reason</th><th>State</th><th>Details</th><th>Note</th><th>Actions</th></tr></thead>
+      <tbody>
       {% for report in page.reports %}
         <tr>
-          <td><input form="bulk-reports" type="checkbox" name="report_ids" value="{{ report.id }}" x-model="selected"></td>
-          <td>
+          <td data-label="Select"><label><input form="bulk-reports" type="checkbox" name="report_ids" value="{{ report.id }}" x-model="selected"> Report {{ loop.index }}</label></td>
+          <td data-label="Item">
             {{ report.item_kind }}
             {% if report.item_kind == "file" %}
               <a href="/{{ report.item_public_id }}">{{ report.item_public_id }}</a>
@@ -31,25 +41,29 @@
             {% endif %}
             <br><a href="/admin/items/{{ report.item_kind }}/{{ report.item_public_id }}">moderate</a>
           </td>
-          <td>{{ report.reason }}</td>
-          <td>{{ report.state }}</td>
-          <td>{{ report.details }}</td>
-          <td><textarea form="report-{{ report.id }}" name="note" rows="2"></textarea></td>
-          <td>
+          <td data-label="Reason">{{ report.reason }}</td>
+          <td data-label="State"><span class="status-badge status-badge--{{ report.state }}">{{ report.state }}</span></td>
+          <td data-label="Details">{{ report.details }}</td>
+          <td data-label="Note"><textarea form="report-{{ report.id }}" name="note" rows="2"></textarea></td>
+          <td data-label="Actions">
             <form id="report-{{ report.id }}" class="inline" method="post" action="/admin/reports/{{ report.id }}" hx-post="/admin/reports/{{ report.id }}" hx-target="#reports-results" hx-swap="outerHTML">
               <input type="hidden" name="filter_state" value="{{ page.filters.state }}">
               <input type="hidden" name="filter_kind" value="{{ page.filters.kind }}">
               <input type="hidden" name="filter_reason" value="{{ page.filters.reason }}">
               <input type="hidden" name="filter_days" value="{{ page.filters.days or "" }}">
-              <button type="submit" name="action" value="resolve">Resolve</button>
-              <button type="submit" name="action" value="dismiss">Dismiss</button>
-              <button type="submit" name="action" value="quarantine">Quarantine</button>
-              <button type="submit" name="action" value="takedown">Takedown</button>
-              <button type="submit" name="action" value="legal_hold">Legal hold</button>
+              <select name="action">
+                <option value="resolve">Resolve</option>
+                <option value="dismiss">Dismiss</option>
+                <option value="quarantine">Quarantine</option>
+                <option value="takedown">Takedown</option>
+                <option value="legal_hold">Legal hold</option>
+              </select>
+              <button type="submit" x-data x-on:click="const action = $el.form.querySelector('select[name=action]').value; if (['quarantine','takedown','legal_hold'].includes(action) && !confirm('Apply this moderation action?')) $event.preventDefault()">Apply</button>
             </form>
           </td>
         </tr>
       {% endfor %}
+      </tbody>
     </table>
   {% else %}
     <p>No reports.</p>

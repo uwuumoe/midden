@@ -1,36 +1,40 @@
 <section id="browse-results" aria-live="polite">
-  <h3>Files</h3>
+  <h3 data-results-heading>Files ({{ page.files | length }})</h3>
   {% if page.files %}
-    <table>
-      <tr><th>File</th><th>Type</th><th>Size</th><th>Created</th></tr>
+    <table class="table-card">
+      <thead><tr><th>File</th><th>Type</th><th>Size</th><th>Created</th></tr></thead>
+      <tbody>
       {% for file in page.files %}
         <tr>
-          <td><a href="/{{ file.public_id }}{% if file.extension %}.{{ file.extension }}{% endif %}">{{ file.original_filename or file.public_id }}</a></td>
-          <td>{{ file.content_type or "" }}</td>
-          <td>{{ human_bytes(file.size_bytes) }}</td>
-          <td>{{ file.created_at }}</td>
+          <td data-label="File"><a href="/{{ file.public_id }}{% if file.extension %}.{{ file.extension }}{% endif %}">{{ file.original_filename or file.public_id }}</a></td>
+          <td data-label="Type">{{ file.content_type or "" }}</td>
+          <td data-label="Size">{{ human_bytes(file.size_bytes) }}</td>
+          <td data-label="Created">{{ file.created_at }}</td>
         </tr>
       {% endfor %}
+      </tbody>
     </table>
   {% else %}
-    <p>No public files.</p>
+    <p>{% if page.q %}No public files matched this search.{% else %}No public files are listed yet.{% endif %}</p>
   {% endif %}
 
-  <h3>Pastes</h3>
+  <h3>Pastes ({{ page.pastes | length }})</h3>
   {% if page.pastes %}
-    <table>
-      <tr><th>Paste</th><th>Syntax</th><th>Size</th><th>Created</th></tr>
+    <table class="table-card">
+      <thead><tr><th>Paste</th><th>Syntax</th><th>Size</th><th>Created</th></tr></thead>
+      <tbody>
       {% for paste in page.pastes %}
         <tr>
-          <td><a href="/p/{{ paste.public_id }}">{{ paste.title or paste.public_id }}</a></td>
-          <td>{{ paste.syntax or "" }}</td>
-          <td>{{ paste.content | length }} B</td>
-          <td>{{ paste.created_at }}</td>
+          <td data-label="Paste"><a href="/p/{{ paste.public_id }}">{{ paste.title or paste.public_id }}</a></td>
+          <td data-label="Syntax">{{ paste.syntax or "" }}</td>
+          <td data-label="Size">{{ paste.content | length }} B</td>
+          <td data-label="Created">{{ paste.created_at }}</td>
         </tr>
       {% endfor %}
+      </tbody>
     </table>
   {% else %}
-    <p>No public pastes.</p>
+    <p>{% if page.q %}No public pastes matched this search.{% else %}No public pastes are listed yet.{% endif %}</p>
   {% endif %}
 
   {% if page.next_cursor %}

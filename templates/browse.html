@@ -2,9 +2,9 @@
 {% block title %}Browse | {{ settings.branding.instance_name }}{% endblock %}
 {% block content %}
   <h2>Browse</h2>
-  <form method="get" action="/browse" hx-get="/browse" hx-target="#browse-results" hx-swap="outerHTML" hx-push-url="true">
+  <form method="get" action="/browse" hx-get="/browse" hx-target="#browse-results" hx-swap="outerHTML" hx-push-url="true" hx-trigger="submit, input changed delay:300ms" hx-indicator="#browse-indicator" hx-disabled-elt="find button">
     <p><label>Search public items<br><input name="q" value="{{ page.q }}" placeholder="filename, id, syntax"></label></p>
-    <p><button type="submit">Search</button>{% if page.q %} <a href="/browse">Clear</a>{% endif %}</p>
+    <p><button type="submit">Search</button>{% if page.q %} <a href="/browse">Clear</a>{% endif %} <span id="browse-indicator" class="htmx-indicator">Loading...</span></p>
   </form>
 
   {% include "browse_results.html" %}

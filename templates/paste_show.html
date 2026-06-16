@@ -9,7 +9,14 @@
 {% endblock %}
 {% block content %}
   <h2>{% if page.paste.title %}{{ page.paste.title }}{% else %}Paste {{ page.paste.public_id }}{% endif %}</h2>
-  <p><a href="/p/{{ page.paste.public_id }}/raw">Raw</a> | <a href="/delete/paste/{{ page.paste.public_id }}">Delete</a>{% if page.can_edit %} | <a href="/p/{{ page.paste.public_id }}/edit">Edit</a>{% endif %}{% if settings.features.reports %} | <a href="/report/paste/{{ page.paste.public_id }}">Report</a>{% endif %}</p>
+  <p class="result-actions">
+    <a href="/p/{{ page.paste.public_id }}/raw">Raw</a>
+    <button type="button" data-copy-value="{{ page.absolute_url }}">Copy page link</button>
+    <button type="button" data-copy-value="{{ page.absolute_raw_url }}">Copy raw link</button>
+    <a href="/delete/paste/{{ page.paste.public_id }}">Delete</a>
+    {% if page.can_edit %}<a href="/p/{{ page.paste.public_id }}/edit">Edit</a>{% endif %}
+    {% if settings.features.reports %}<a href="/report/paste/{{ page.paste.public_id }}">Report</a>{% endif %}
+  </p>
   {% if page.revision_count %}<p>{{ page.revision_count }} prior revisions.</p>{% endif %}
   <div class="paste-rendered">{{ page.rendered | safe }}</div>
 {% endblock %}

@@ -1,43 +1,46 @@
 <section id="admin-users-lists" aria-live="polite">
   {% if page.invite_token %}
-    <p class="notice" x-data="{ copied: false }">
+    <p class="notice">
       Invite token, shown once: <code x-ref="token">{{ page.invite_token }}</code>
-      <button type="button" x-on:click="middenCopy($refs.token.textContent).then(() => { copied = true; setTimeout(() => copied = false, 1600) })" x-text="copied ? 'Copied' : 'Copy token'">Copy token</button>
+      <button type="button" data-copy-value="{{ page.invite_token }}">Copy token</button>
     </p>
   {% endif %}
 
-  <h3>Invites</h3>
+  <h3 data-results-heading>Invites ({{ page.invites | length }})</h3>
   {% if page.invites %}
-    <table>
-      <tr><th>Role</th><th>Status</th><th>Expires</th><th>Used by</th><th>Created</th><th></th></tr>
+    <table class="table-card">
+      <thead><tr><th>Role</th><th>Status</th><th>Expires</th><th>Used by</th><th>Created</th><th>Actions</th></tr></thead>
+      <tbody>
       {% for invite in page.invites %}
         <tr>
-          <td>{{ invite.role }}</td>
-          <td>{% if invite.revoked_at %}revoked{% elif invite.used_at %}used{% else %}active{% endif %}</td>
-          <td>{{ invite.expires_at or "" }}</td>
-          <td>{{ invite.used_by_user_id or "" }}</td>
-          <td>{{ invite.created_at }}</td>
-          <td>
+          <td data-label="Role">{{ invite.role }}</td>
+          <td data-label="Status"><span class="status-badge {% if invite.revoked_at %}status-badge--revoked{% elif invite.used_at %}status-badge--muted{% else %}status-badge--active{% endif %}">{% if invite.revoked_at %}revoked{% elif invite.used_at %}used{% else %}active{% endif %}</span></td>
+          <td data-label="Expires">{{ invite.expires_at or "" }}</td>
+          <td data-label="Used by">{{ invite.used_by_user_id or "" }}</td>
+          <td data-label="Created">{{ invite.created_at }}</td>
+          <td data-label="Actions">
             {% if not invite.revoked_at and not invite.used_at %}
               <form method="post" action="/admin/users/invites/{{ invite.id }}/revoke" hx-post="/admin/users/invites/{{ invite.id }}/revoke" hx-target="#admin-users-lists" hx-swap="outerHTML" x-data x-on:submit="if (!confirm('Revoke this invite?')) $event.preventDefault()"><button type="submit">Revoke</button></form>
             {% endif %}
           </td>
         </tr>
       {% endfor %}
+      </tbody>
     </table>
   {% else %}
     <p>No invites.</p>
   {% endif %}
 
-  <h3>Existing users</h3>
+  <h3>Existing users ({{ page.users | length }})</h3>
   {% if page.users %}
-    <table>
-      <tr><th>User</th><th>Email</th><th>Role</th><th>Status</th><th>Security</th><th>Actions</th></tr>
+    <table class="table-card">
+      <thead><tr><th>User</th><th>Email</th><th>Role</th><th>Status</th><th>Security</th><th>Actions</th></tr></thead>
+      <tbody>
       {% for user in page.users %}
         <tr>
-          <td>{{ user.username }}</td>
-          <td>{{ user.email }}</td>
-          <td>
+          <td data-label="User">{{ user.username }}</td>
+          <td data-label="Email">{{ user.email }}</td>
+          <td data-label="Role">
             <form method="post" action="/admin/users/{{ user.id }}/role" hx-post="/admin/users/{{ user.id }}/role" hx-target="#admin-users-lists" hx-swap="outerHTML">
               <select name="role">
                 <option value="user" {% if user.role == "user" %}selected{% endif %}>user</option>
@@ -48,12 +51,12 @@
               <button type="submit">Save role</button>
             </form>
           </td>
-          <td>{% if user.is_disabled %}disabled{% else %}active{% endif %}</td>
-          <td>
-            {% if user.email_verified_at %}verified{% else %}unverified{% endif %}
-            {% if user.two_factor_enabled %}<br>2FA enabled{% endif %}
+          <td data-label="Status"><span class="status-badge {% if user.is_disabled %}status-badge--disabled{% else %}status-badge--active{% endif %}">{% if user.is_disabled %}disabled{% else %}active{% endif %}</span></td>
+          <td data-label="Security">
+            <span class="status-badge {% if user.email_verified_at %}status-badge--verified{% else %}status-badge--muted{% endif %}">{% if user.email_verified_at %}verified{% else %}unverified{% endif %}</span>
+            {% if user.two_factor_enabled %}<br><span class="status-badge status-badge--active">2FA enabled</span>{% endif %}
           </td>
-          <td>
+          <td data-label="Actions">
             {% if user.is_disabled %}
               <form method="post" action="/admin/users/{{ user.id }}/enable" hx-post="/admin/users/{{ user.id }}/enable" hx-target="#admin-users-lists" hx-swap="outerHTML"><button type="submit">Enable</button></form>
             {% else %}
@@ -62,6 +65,7 @@
           </td>
         </tr>
       {% endfor %}
+      </tbody>
     </table>
   {% else %}
     <p>No users.</p>

@@ -1,31 +1,39 @@
 <section id="account-tokens" aria-live="polite">
   <h3>API tokens</h3>
   {% if page.new_token %}
-    <p class="notice" x-data="{ copied: false }">
+    <p class="notice">
       New token, shown once: <code x-ref="token">{{ page.new_token }}</code>
-      <button type="button" x-on:click="middenCopy($refs.token.textContent).then(() => { copied = true; setTimeout(() => copied = false, 1600) })" x-text="copied ? 'Copied' : 'Copy token'">Copy token</button>
+      <button type="button" data-copy-value="{{ page.new_token }}">Copy token</button>
     </p>
   {% endif %}
-  <form method="post" action="/account/tokens" hx-post="/account/tokens" hx-target="#account-tokens" hx-swap="outerHTML">
+  <form method="post" action="/account/tokens" hx-post="/account/tokens" hx-target="#account-tokens" hx-swap="outerHTML" hx-indicator="#account-tokens-indicator" hx-disabled-elt="find button" x-data="{ scopes: ['files:write','pastes:write','files:read','pastes:read'] }">
     <p><label>Name<br><input name="name" required placeholder="script uploads"></label></p>
-    <p><label>Scopes, comma separated<br><input name="scopes" required value="files:write,pastes:write,files:read,pastes:read"></label></p>
-    <p><button type="submit">Create token</button></p>
+    <fieldset class="scope-grid">
+      <legend>Scopes</legend>
+      {% for scope in ["files:write", "pastes:write", "files:read", "pastes:read", "files:delete", "pastes:delete", "items:claim", "reports:write", "tokens:read", "tokens:write"] %}
+        <label><input type="checkbox" value="{{ scope }}" x-model="scopes"> {{ scope }}</label>
+      {% endfor %}
+    </fieldset>
+    <input type="hidden" name="scopes" x-bind:value="scopes.join(',')" required>
+    <p><button type="submit" x-bind:disabled="scopes.length === 0">Create token</button> <span id="account-tokens-indicator" class="htmx-indicator">Saving...</span></p>
   </form>
   {% if page.tokens %}
-    <table>
-      <tr><th>Name</th><th>Scopes</th><th>Status</th><th></th></tr>
+    <table class="table-card">
+      <thead><tr><th>Name</th><th>Scopes</th><th>Status</th><th>Actions</th></tr></thead>
+      <tbody>
       {% for token in page.tokens %}
         <tr>
-          <td>{{ token.name }}</td>
-          <td>{{ token.scopes | join(", ") }}</td>
-          <td>{% if token.revoked_at %}revoked{% else %}active{% endif %}</td>
-          <td>
+          <td data-label="Name">{{ token.name }}</td>
+          <td data-label="Scopes">{{ token.scopes | join(", ") }}</td>
+          <td data-label="Status"><span class="status-badge {% if token.revoked_at %}status-badge--revoked{% else %}status-badge--active{% endif %}">{% if token.revoked_at %}revoked{% else %}active{% endif %}</span></td>
+          <td data-label="Actions">
             {% if not token.revoked_at %}
               <form method="post" action="/account/tokens/{{ token.id }}/revoke" hx-post="/account/tokens/{{ token.id }}/revoke" hx-target="#account-tokens" hx-swap="outerHTML" x-data x-on:submit="if (!confirm('Revoke this API token?')) $event.preventDefault()"><button type="submit">Revoke token</button></form>
             {% endif %}
           </td>
         </tr>
       {% endfor %}
+      </tbody>
     </table>
   {% else %}
     <p>No API tokens.</p>
