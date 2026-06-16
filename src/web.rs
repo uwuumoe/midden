@@ -1480,6 +1480,7 @@ struct AccountQuery {
 async fn account(
     State(state): State<AppState>,
     jar: CookieJar,
+    headers: HeaderMap,
     Query(query): Query<AccountQuery>,
 ) -> AppResult<Html<String>> {
     let settings = state.settings().await?;
@@ -1489,12 +1490,14 @@ async fn account(
     let oidc_link_enabled = oidc::enabled(&state, &settings);
     let q = query.q.unwrap_or_default();
     let (files, pastes) = user_items_for_query(&state, &settings, &user, &q).await?;
-    let tokens = state.db.list_api_tokens(&user.id).await?;
-    render(
-        &state,
-        "account.html",
-        &settings,
-        Some(&user),
+    let page = if htmx_request(&headers) {
+        serde_json::json!({
+            "q": q,
+            "files": files,
+            "pastes": pastes,
+        })
+    } else {
+        let tokens = state.db.list_api_tokens(&user.id).await?;
         serde_json::json!({
             "q": q,
             "files": files,
@@ -1506,7 +1509,18 @@ async fn account(
             "two_factor_enabled": user.two_factor_enabled,
             "smtp_enabled": state.mailer.enabled(),
             "oidc_link_enabled": oidc_link_enabled,
-        }),
+        })
+    };
+    render(
+        &state,
+        if htmx_request(&headers) {
+            "account_items.html"
+        } else {
+            "account.html"
+        },
+        &settings,
+        Some(&user),
+        page,
     )
 }
 
@@ -1520,8 +1534,9 @@ struct AccountTokenForm {
 async fn account_create_token(
     State(state): State<AppState>,
     jar: CookieJar,
+    headers: HeaderMap,
     axum::Form(form): axum::Form<AccountTokenForm>,
-) -> AppResult<Html<String>> {
+) -> AppResult<Response> {
     let settings = state.settings().await?;
     let user = current_user(&state, &jar)
         .await?
@@ -1543,10 +1558,23 @@ async fn account_create_token(
         .db
         .audit(Some(&user.id), "api_token.created", &user.id, &form.name)
         .await?;
+    let tokens = state.db.list_api_tokens(&user.id).await?;
+    if htmx_request(&headers) {
+        return Ok(render(
+            &state,
+            "account_tokens.html",
+            &settings,
+            Some(&user),
+            serde_json::json!({
+                "tokens": tokens,
+                "new_token": token,
+            }),
+        )?
+        .into_response());
+    }
     let files = state.db.recent_user_files(&user.id).await?;
     let pastes = state.db.recent_user_pastes(&user.id).await?;
-    let tokens = state.db.list_api_tokens(&user.id).await?;
-    render(
+    Ok(render(
         &state,
         "account.html",
         &settings,
@@ -1563,15 +1591,18 @@ async fn account_create_token(
             "smtp_enabled": state.mailer.enabled(),
             "oidc_link_enabled": oidc_link_enabled,
         }),
-    )
+    )?
+    .into_response())
 }
 
 async fn account_revoke_token(
     State(state): State<AppState>,
     jar: CookieJar,
+    headers: HeaderMap,
     Path(id): Path<String>,
     axum::Form(form): axum::Form<CsrfForm>,
-) -> AppResult<Redirect> {
+) -> AppResult<Response> {
+    let settings = state.settings().await?;
     let user = current_user(&state, &jar)
         .await?
         .ok_or(AppError::Unauthorized)?;
@@ -1581,7 +1612,22 @@ async fn account_revoke_token(
         .db
         .audit(Some(&user.id), "api_token.revoked", &user.id, &id)
         .await?;
-    Ok(Redirect::to("/account"))
+    if htmx_request(&headers) {
+        let tokens = state.db.list_api_tokens(&user.id).await?;
+        Ok(render(
+            &state,
+            "account_tokens.html",
+            &settings,
+            Some(&user),
+            serde_json::json!({
+                "tokens": tokens,
+                "new_token": null,
+            }),
+        )?
+        .into_response())
+    } else {
+        Ok(Redirect::to("/account").into_response())
+    }
 }
 
 async fn account_send_email_verification(
@@ -1773,6 +1819,7 @@ struct BrowseQuery {
 async fn public_browse(
     State(state): State<AppState>,
     jar: CookieJar,
+    headers: HeaderMap,
     Query(query): Query<BrowseQuery>,
 ) -> AppResult<Html<String>> {
     let settings = state.settings().await?;
@@ -1791,7 +1838,11 @@ async fn public_browse(
         .min();
     render(
         &state,
-        "browse.html",
+        if htmx_request(&headers) {
+            "browse_results.html"
+        } else {
+            "browse.html"
+        },
         &settings,
         user.as_ref(),
         serde_json::json!({
@@ -1896,6 +1947,22 @@ async fn static_asset(
                 HeaderValue::from_static("application/javascript; charset=utf-8"),
             )],
             include_str!("../static/midden.js"),
+        )
+            .into_response(),
+        "vendor/htmx.min.js" => (
+            [(
+                header::CONTENT_TYPE,
+                HeaderValue::from_static("application/javascript; charset=utf-8"),
+            )],
+            include_str!("../static/vendor/htmx.min.js"),
+        )
+            .into_response(),
+        "vendor/alpine.min.js" => (
+            [(
+                header::CONTENT_TYPE,
+                HeaderValue::from_static("application/javascript; charset=utf-8"),
+            )],
+            include_str!("../static/vendor/alpine.min.js"),
         )
             .into_response(),
         _ => return Err(AppError::NotFound),

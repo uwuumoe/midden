@@ -4,21 +4,29 @@
   <h2>Admin settings</h2>
   <p><a href="/admin/users">Users</a> | <a href="/admin/search">Search files and pastes</a> | <a href="/admin/reports">Reports</a></p>
 
-  <form method="post" action="/admin/settings">
-    <h3>Features</h3>
+  <form method="post" action="/admin/settings" x-data="{ dirty: false, featureApi: {% if settings.features.api %}true{% else %}false{% endif %}, featureReports: {% if settings.features.reports %}true{% else %}false{% endif %}, featureUrlUpload: {% if settings.features.upload_by_url %}true{% else %}false{% endif %}, scanningEnabled: {% if settings.scanning.enabled %}true{% else %}false{% endif %}, signedInternalUrls: {% if settings.delivery.signed_internal_urls %}true{% else %}false{% endif %} }" x-on:input="dirty = true" x-on:change="dirty = true">
+    <p class="notice" x-show="dirty">Unsaved settings changes.</p>
+    <p><button type="button" x-on:click="Array.from($root.querySelectorAll('details.settings-section')).forEach((section) => section.open = true)">Expand all</button> <button type="button" x-on:click="Array.from($root.querySelectorAll('details.settings-section')).forEach((section) => section.open = false)">Collapse all</button></p>
+    <details class="settings-section" open>
+      <summary>Features</summary>
     <p><label><input type="checkbox" name="feature_files" {% if settings.features.files %}checked{% endif %}> Files</label></p>
     <p><label><input type="checkbox" name="feature_pastes" {% if settings.features.pastes %}checked{% endif %}> Pastes</label></p>
     <p><label><input type="checkbox" name="feature_accounts" {% if settings.features.accounts %}checked{% endif %}> Accounts</label></p>
-    <p><label><input type="checkbox" name="feature_api" {% if settings.features.api %}checked{% endif %}> API</label></p>
-    <p><label><input type="checkbox" name="feature_reports" {% if settings.features.reports %}checked{% endif %}> Reports</label></p>
-    <p><label><input type="checkbox" name="feature_upload_by_url" {% if settings.features.upload_by_url %}checked{% endif %}> URL upload</label></p>
+    <p><label><input type="checkbox" name="feature_api" x-model="featureApi" {% if settings.features.api %}checked{% endif %}> API</label></p>
+    <p class="field-note" x-show="!featureApi">API docs, API tokens, and JSON endpoints stay unavailable while API is disabled.</p>
+    <p><label><input type="checkbox" name="feature_reports" x-model="featureReports" {% if settings.features.reports %}checked{% endif %}> Reports</label></p>
+    <p class="field-note" x-show="!featureReports">Public report links and moderation report queues stay hidden while reports are disabled.</p>
+    <p><label><input type="checkbox" name="feature_upload_by_url" x-model="featureUrlUpload" {% if settings.features.upload_by_url %}checked{% endif %}> URL upload</label></p>
+    <p class="field-note" x-show="!featureUrlUpload">URL upload security settings are kept, but users cannot submit remote URLs while this is disabled.</p>
     <p><label><input type="checkbox" name="feature_oidc_login" {% if settings.features.oidc_login %}checked{% endif %}> OIDC login</label></p>
     <p><label><input type="checkbox" name="feature_preview_pages" {% if settings.features.preview_pages %}checked{% endif %}> Preview pages</label></p>
     <p><label><input type="checkbox" name="feature_public_browse" {% if settings.features.public_browse %}checked{% endif %}> Public browse</label></p>
     <p><label><input type="checkbox" name="feature_paste_content_search" {% if settings.features.paste_content_search %}checked{% endif %}> Paste content search for owners</label></p>
     <p><label><input type="checkbox" name="feature_paste_editing" {% if settings.features.paste_editing %}checked{% endif %}> Paste editing for owners</label></p>
+    </details>
 
-    <h3>Policy</h3>
+    <details class="settings-section" open>
+      <summary>Policy</summary>
     <p><label>Signup<br>
       <select name="signup">
         <option value="disabled" {% if settings.policy.signup == "disabled" %}selected{% endif %}>disabled</option>
@@ -55,8 +63,10 @@
         <option value="claim_later" {% if settings.policy.delete_policy == "claim_later" %}selected{% endif %}>claim later</option>
       </select>
     </label></p>
+    </details>
 
-    <h3>Limits</h3>
+    <details class="settings-section" open>
+      <summary>Limits</summary>
     <p><label>Max upload bytes<br><input type="number" min="1" name="max_upload_bytes" value="{{ settings.limits.max_upload_bytes }}" required></label></p>
     <p><label>Max paste bytes<br><input type="number" min="1" name="max_paste_bytes" value="{{ settings.limits.max_paste_bytes }}" required></label></p>
     <p><label>Default file expiry<br><input name="default_file_expiry" value="{{ settings.limits.default_file_expiry or "" }}" placeholder="never, 12h, 7d"></label></p>
@@ -71,8 +81,10 @@
     <p><label>Daily upload bytes<br><input type="number" min="1" name="user_daily_upload_bytes" value="{{ settings.limits.role_quotas.user.daily_upload_bytes or "" }}"></label></p>
     <p><label>Monthly upload bytes<br><input type="number" min="1" name="user_monthly_upload_bytes" value="{{ settings.limits.role_quotas.user.monthly_upload_bytes or "" }}"></label></p>
     <p><label>Item count<br><input type="number" min="1" name="user_item_count" value="{{ settings.limits.role_quotas.user.item_count or "" }}"></label></p>
+    </details>
 
-    <h3>Security</h3>
+    <details class="settings-section" open>
+      <summary>Security</summary>
     <p><label><input type="checkbox" name="secure_cookies" {% if settings.security.secure_cookies %}checked{% endif %}> Secure cookies</label></p>
     <p><label><input type="checkbox" name="reject_mime_mismatch" {% if settings.security.reject_mime_mismatch %}checked{% endif %}> Reject MIME mismatches</label></p>
     <p><label>Content disposition<br>
@@ -81,57 +93,75 @@
         <option value="attachment" {% if settings.security.content_disposition == "attachment" %}selected{% endif %}>attachment</option>
       </select>
     </label></p>
-    <h4>URL upload</h4>
-    <p><label><input type="checkbox" name="url_block_private_ips" {% if settings.security.url_upload.block_private_ips %}checked{% endif %}> Block private, loopback, and link-local IPs</label></p>
-    <p><label>Max redirects<br><input type="number" min="0" name="url_max_redirects" value="{{ settings.security.url_upload.max_redirects }}"></label></p>
-    <p><label>Allowed hosts, one per line<br><textarea name="url_allowed_hosts" rows="4">{{ settings.security.url_upload.allowed_hosts | join("\n") }}</textarea></label></p>
-    <p><label>Blocked hosts, one per line<br><textarea name="url_blocked_hosts" rows="4">{{ settings.security.url_upload.blocked_hosts | join("\n") }}</textarea></label></p>
+    <section x-show="featureUrlUpload">
+      <h4>URL upload</h4>
+      <p><label><input type="checkbox" name="url_block_private_ips" {% if settings.security.url_upload.block_private_ips %}checked{% endif %}> Block private, loopback, and link-local IPs</label></p>
+      <p><label>Max redirects<br><input type="number" min="0" name="url_max_redirects" value="{{ settings.security.url_upload.max_redirects }}"></label></p>
+      <p><label>Allowed hosts, one per line<br><textarea name="url_allowed_hosts" rows="4">{{ settings.security.url_upload.allowed_hosts | join("\n") }}</textarea></label></p>
+      <p><label>Blocked hosts, one per line<br><textarea name="url_blocked_hosts" rows="4">{{ settings.security.url_upload.blocked_hosts | join("\n") }}</textarea></label></p>
+    </section>
+    </details>
 
-    <h3>Delivery</h3>
+    <details class="settings-section" open>
+      <summary>Delivery</summary>
     <p><label>Public file cache seconds<br><input type="number" min="0" name="delivery_public_cache_seconds" value="{{ settings.delivery.public_cache_seconds }}"></label></p>
     <p><label>Static asset cache seconds<br><input type="number" min="0" name="delivery_static_cache_seconds" value="{{ settings.delivery.static_cache_seconds }}"></label></p>
-    <p><label><input type="checkbox" name="delivery_signed_internal_urls" {% if settings.delivery.signed_internal_urls %}checked{% endif %}> Signed internal raw file URLs</label></p>
-    <p><label>Internal URL secret<br><input name="delivery_internal_url_secret" value="{{ settings.delivery.internal_url_secret or "" }}"></label></p>
-    <p><label>Internal URL TTL seconds<br><input type="number" min="1" name="delivery_internal_url_ttl_seconds" value="{{ settings.delivery.internal_url_ttl_seconds }}"></label></p>
+    <p><label><input type="checkbox" name="delivery_signed_internal_urls" x-model="signedInternalUrls" {% if settings.delivery.signed_internal_urls %}checked{% endif %}> Signed internal raw file URLs</label></p>
+    <section x-show="signedInternalUrls">
+      <p><label>Internal URL secret<br><input name="delivery_internal_url_secret" value="{{ settings.delivery.internal_url_secret or "" }}"></label></p>
+      <p><label>Internal URL TTL seconds<br><input type="number" min="1" name="delivery_internal_url_ttl_seconds" value="{{ settings.delivery.internal_url_ttl_seconds }}"></label></p>
+    </section>
+    </details>
 
-    <h3>Processing</h3>
+    <details class="settings-section" open>
+      <summary>Processing</summary>
     <p><label><input type="checkbox" name="processing_metadata_extraction" {% if settings.processing.metadata_extraction %}checked{% endif %}> Extract file metadata</label></p>
     <p><label><input type="checkbox" name="processing_metadata_stripping" {% if settings.processing.metadata_stripping %}checked{% endif %}> Strip supported image metadata on upload</label></p>
     <p><label><input type="checkbox" name="processing_thumbnails" {% if settings.processing.thumbnails %}checked{% endif %}> Generate image thumbnail references</label></p>
+    </details>
 
-    <h3>Discovery</h3>
+    <details class="settings-section" open>
+      <summary>Discovery</summary>
     <p><label><input type="checkbox" name="discovery_robots_index" {% if settings.discovery.robots_index %}checked{% endif %}> Allow robots to index the browse page</label></p>
     <p><label>Browse page size<br><input type="number" min="1" max="1000" name="discovery_page_size" value="{{ settings.discovery.page_size }}"></label></p>
+    </details>
 
-    <h3>Background jobs</h3>
+    <details class="settings-section" open>
+      <summary>Background jobs</summary>
     <p><label><input type="checkbox" name="jobs_enabled" {% if settings.jobs.enabled %}checked{% endif %}> Run internal background jobs</label></p>
     <p><label>Interval seconds<br><input type="number" min="30" name="jobs_interval_seconds" value="{{ settings.jobs.interval_seconds }}"></label></p>
     <p><label>Metadata batch limit<br><input type="number" min="1" name="jobs_metadata_limit" value="{{ settings.jobs.metadata_limit }}"></label></p>
     <p><label>Scanner retry batch limit<br><input type="number" min="1" name="jobs_scanner_retry_limit" value="{{ settings.jobs.scanner_retry_limit }}"></label></p>
     <p><label>Storage verify interval seconds<br><input type="number" min="60" name="jobs_storage_verify_interval_seconds" value="{{ settings.jobs.storage_verify_interval_seconds }}"></label></p>
+    </details>
 
-    <h3>Rate limits</h3>
+    <details class="settings-section" open>
+      <summary>Rate limits</summary>
     <table>
       <tr><th>Action</th><th>Enabled</th><th>Requests</th><th>Window seconds</th></tr>
       {% for row in [
-        ("upload_file", "Upload file", "rl_upload_file", settings.security.rate_limits.upload_file),
-        ("upload_by_url", "URL upload", "rl_upload_by_url", settings.security.rate_limits.upload_by_url),
-        ("login", "Login", "rl_login", settings.security.rate_limits.login),
-        ("password_reset", "Password reset", "rl_password_reset", settings.security.rate_limits.password_reset),
-        ("report", "Report", "rl_report", settings.security.rate_limits.report),
-        ("tus_create", "Tus create", "rl_tus_create", settings.security.rate_limits.tus_create)
+        ("upload_file", "Upload file", "rl_upload_file", settings.security.rate_limits.upload_file | default({})),
+        ("upload_by_url", "URL upload", "rl_upload_by_url", settings.security.rate_limits.upload_by_url | default({})),
+        ("login", "Login", "rl_login", settings.security.rate_limits.login | default({})),
+        ("password_reset", "Password reset", "rl_password_reset", settings.security.rate_limits.password_reset | default({})),
+        ("report", "Report", "rl_report", settings.security.rate_limits.report | default({})),
+        ("tus_create", "Tus create", "rl_tus_create", settings.security.rate_limits.tus_create | default({}))
       ] %}
         <tr>
           <td>{{ row.1 }}</td>
-          <td><input type="checkbox" name="{{ row.2 }}_enabled" {% if row.3.enabled %}checked{% endif %}></td>
-          <td><input type="number" min="1" name="{{ row.2 }}_requests" value="{{ row.3.requests or "" }}"></td>
-          <td><input type="number" min="1" name="{{ row.2 }}_window" value="{{ row.3.window_seconds or "" }}"></td>
+          <td><input type="checkbox" name="{{ row.2 }}_enabled" {% if row.3.enabled | default(false) %}checked{% endif %}></td>
+          <td><input type="number" min="1" name="{{ row.2 }}_requests" value="{{ row.3.requests | default("") }}"></td>
+          <td><input type="number" min="1" name="{{ row.2 }}_window" value="{{ row.3.window_seconds | default("") }}"></td>
         </tr>
       {% endfor %}
     </table>
+    </details>
 
-    <h3>Scanning</h3>
-    <p><label><input type="checkbox" name="scanning_enabled" {% if settings.scanning.enabled %}checked{% endif %}> Enable scanners</label></p>
+    <details class="settings-section" open>
+      <summary>Scanning</summary>
+    <p><label><input type="checkbox" name="scanning_enabled" x-model="scanningEnabled" {% if settings.scanning.enabled %}checked{% endif %}> Enable scanners</label></p>
+    <p class="field-note" x-show="!scanningEnabled">Scanner configuration is saved, but uploads will not be checked while scanners are disabled.</p>
+    <section x-show="scanningEnabled">
     <p><label>Default failure behavior<br>
       <select name="default_on_error">
         <option value="allow" {% if settings.scanning.default_on_error == "allow" %}selected{% endif %}>allow</option>
@@ -146,8 +176,11 @@
     <p><label>Webhook scanner URL<br><input type="url" name="webhook_scanner_url" value="{{ page.scanner.webhook_url }}"></label></p>
     <p><label>Webhook scanner secret<br><input name="webhook_scanner_secret" value="{{ page.scanner.webhook_secret }}"></label></p>
     <p><label>ClamAV socket<br><input name="clamav_socket" value="{{ page.scanner.clamav_socket }}"></label></p>
+    </section>
+    </details>
 
-    <h3>Branding</h3>
+    <details class="settings-section" open>
+      <summary>Branding</summary>
     <p><label>Instance name<br><input name="instance_name" value="{{ settings.branding.instance_name }}" required></label></p>
     <p><label>Tagline<br><input name="tagline" value="{{ settings.branding.tagline }}"></label></p>
     <p><label>Logo URL<br><input name="logo_url" value="{{ settings.branding.logo_url or "" }}"></label></p>
@@ -167,6 +200,7 @@
     <p><label>Homepage blocks, one per line as title | body | href | link label<br><textarea name="homepage_blocks" rows="5">{{ page.homepage_blocks }}</textarea></label></p>
     <p><label>Abuse email<br><input type="email" name="abuse_email" value="{{ settings.branding.abuse_email or "" }}"></label></p>
     <p><label>Contact URL<br><input name="contact_url" value="{{ settings.branding.contact_url or "" }}"></label></p>
+    </details>
 
     <p><button type="submit">Save settings</button></p>
   </form>

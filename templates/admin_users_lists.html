@@ -1,0 +1,69 @@
+<section id="admin-users-lists" aria-live="polite">
+  {% if page.invite_token %}
+    <p class="notice" x-data="{ copied: false }">
+      Invite token, shown once: <code x-ref="token">{{ page.invite_token }}</code>
+      <button type="button" x-on:click="middenCopy($refs.token.textContent).then(() => { copied = true; setTimeout(() => copied = false, 1600) })" x-text="copied ? 'Copied' : 'Copy token'">Copy token</button>
+    </p>
+  {% endif %}
+
+  <h3>Invites</h3>
+  {% if page.invites %}
+    <table>
+      <tr><th>Role</th><th>Status</th><th>Expires</th><th>Used by</th><th>Created</th><th></th></tr>
+      {% for invite in page.invites %}
+        <tr>
+          <td>{{ invite.role }}</td>
+          <td>{% if invite.revoked_at %}revoked{% elif invite.used_at %}used{% else %}active{% endif %}</td>
+          <td>{{ invite.expires_at or "" }}</td>
+          <td>{{ invite.used_by_user_id or "" }}</td>
+          <td>{{ invite.created_at }}</td>
+          <td>
+            {% if not invite.revoked_at and not invite.used_at %}
+              <form method="post" action="/admin/users/invites/{{ invite.id }}/revoke" hx-post="/admin/users/invites/{{ invite.id }}/revoke" hx-target="#admin-users-lists" hx-swap="outerHTML" x-data x-on:submit="if (!confirm('Revoke this invite?')) $event.preventDefault()"><button type="submit">Revoke</button></form>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <p>No invites.</p>
+  {% endif %}
+
+  <h3>Existing users</h3>
+  {% if page.users %}
+    <table>
+      <tr><th>User</th><th>Email</th><th>Role</th><th>Status</th><th>Security</th><th>Actions</th></tr>
+      {% for user in page.users %}
+        <tr>
+          <td>{{ user.username }}</td>
+          <td>{{ user.email }}</td>
+          <td>
+            <form method="post" action="/admin/users/{{ user.id }}/role" hx-post="/admin/users/{{ user.id }}/role" hx-target="#admin-users-lists" hx-swap="outerHTML">
+              <select name="role">
+                <option value="user" {% if user.role == "user" %}selected{% endif %}>user</option>
+                <option value="moderator" {% if user.role == "moderator" %}selected{% endif %}>moderator</option>
+                <option value="admin" {% if user.role == "admin" %}selected{% endif %}>admin</option>
+                <option value="owner" {% if user.role == "owner" %}selected{% endif %}>owner</option>
+              </select>
+              <button type="submit">Save role</button>
+            </form>
+          </td>
+          <td>{% if user.is_disabled %}disabled{% else %}active{% endif %}</td>
+          <td>
+            {% if user.email_verified_at %}verified{% else %}unverified{% endif %}
+            {% if user.two_factor_enabled %}<br>2FA enabled{% endif %}
+          </td>
+          <td>
+            {% if user.is_disabled %}
+              <form method="post" action="/admin/users/{{ user.id }}/enable" hx-post="/admin/users/{{ user.id }}/enable" hx-target="#admin-users-lists" hx-swap="outerHTML"><button type="submit">Enable</button></form>
+            {% else %}
+              <form method="post" action="/admin/users/{{ user.id }}/disable" hx-post="/admin/users/{{ user.id }}/disable" hx-target="#admin-users-lists" hx-swap="outerHTML" x-data x-on:submit="if (!confirm('Disable this user?')) $event.preventDefault()"><button type="submit">Disable</button></form>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <p>No users.</p>
+  {% endif %}
+</section>

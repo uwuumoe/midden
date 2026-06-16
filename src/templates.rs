@@ -64,6 +64,10 @@ const BUILTIN_TEMPLATES: &[(&str, &str)] = &[
     ("index.html", include_str!("../templates/index.html")),
     ("browse.html", include_str!("../templates/browse.html")),
     (
+        "browse_results.html",
+        include_str!("../templates/browse_results.html"),
+    ),
+    (
         "upload_result.html",
         include_str!("../templates/upload_result.html"),
     ),
@@ -111,16 +115,36 @@ const BUILTIN_TEMPLATES: &[(&str, &str)] = &[
     ),
     ("register.html", include_str!("../templates/register.html")),
     ("account.html", include_str!("../templates/account.html")),
+    (
+        "account_items.html",
+        include_str!("../templates/account_items.html"),
+    ),
+    (
+        "account_tokens.html",
+        include_str!("../templates/account_tokens.html"),
+    ),
     ("admin.html", include_str!("../templates/admin.html")),
     (
         "admin_search.html",
         include_str!("../templates/admin_search.html"),
     ),
     (
+        "admin_search_results.html",
+        include_str!("../templates/admin_search_results.html"),
+    ),
+    (
         "admin_users.html",
         include_str!("../templates/admin_users.html"),
     ),
+    (
+        "admin_users_lists.html",
+        include_str!("../templates/admin_users_lists.html"),
+    ),
     ("reports.html", include_str!("../templates/reports.html")),
+    (
+        "reports_table.html",
+        include_str!("../templates/reports_table.html"),
+    ),
     (
         "admin_item.html",
         include_str!("../templates/admin_item.html"),

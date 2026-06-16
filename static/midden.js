@@ -20,12 +20,45 @@
     form.appendChild(input);
   }
 
-  document.querySelectorAll("form").forEach((form) => {
-    if ((form.method || "").toLowerCase() === "post") {
-      ensureCsrfField(form);
-      form.addEventListener("submit", () => ensureCsrfField(form));
-    }
+  function ensureCsrfFields(root) {
+    root.querySelectorAll("form").forEach((form) => {
+      if ((form.method || "").toLowerCase() === "post") {
+        ensureCsrfField(form);
+        form.addEventListener("submit", () => ensureCsrfField(form));
+      }
+    });
+  }
+
+  ensureCsrfFields(document);
+
+  document.body.addEventListener("htmx:afterSwap", (event) => {
+    ensureCsrfFields(event.target);
   });
+
+  document.body.addEventListener("htmx:configRequest", (event) => {
+    const token = readCookie(csrfCookie);
+    if (!token) return;
+    event.detail.headers["X-CSRF-Token"] = decodeURIComponent(token);
+  });
+
+  window.middenCopy = function (text) {
+    if (navigator.clipboard && window.isSecureContext) {
+      return navigator.clipboard.writeText(text);
+    }
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.setAttribute("readonly", "");
+    textarea.style.position = "fixed";
+    textarea.style.top = "-1000px";
+    document.body.appendChild(textarea);
+    textarea.select();
+    try {
+      document.execCommand("copy");
+      return Promise.resolve();
+    } finally {
+      textarea.remove();
+    }
+  };
 
   function setupDropZone(dropZone, input) {
     ["dragenter", "dragover"].forEach((eventName) => {

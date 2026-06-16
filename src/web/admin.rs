@@ -33,6 +33,7 @@ pub(super) struct AdminSearchQuery {
 pub(super) async fn admin_search(
     State(state): State<AppState>,
     jar: CookieJar,
+    headers: HeaderMap,
     Query(query): Query<AdminSearchQuery>,
 ) -> AppResult<Html<String>> {
     let settings = state.settings().await?;
@@ -54,7 +55,11 @@ pub(super) async fn admin_search(
     };
     render(
         &state,
-        "admin_search.html",
+        if htmx_request(&headers) {
+            "admin_search_results.html"
+        } else {
+            "admin_search.html"
+        },
         &settings,
         user.as_ref(),
         serde_json::json!({
@@ -86,6 +91,24 @@ pub(super) async fn admin_users(
     )
 }
 
+async fn render_admin_users_page(
+    state: &AppState,
+    settings: &RuntimeSettings,
+    user: Option<&User>,
+    invite_token: Option<String>,
+    template: &str,
+) -> AppResult<Html<String>> {
+    let users = state.db.list_users().await?;
+    let invites = state.db.list_invite_tokens().await?;
+    render(
+        state,
+        template,
+        settings,
+        user,
+        serde_json::json!({ "users": users, "invites": invites, "invite_token": invite_token }),
+    )
+}
+
 fn role_requires_owner_actor(role: Role, user: Option<&User>) -> bool {
     role == Role::Owner && user.is_none_or(|user| user.role != Role::Owner)
 }
@@ -102,8 +125,10 @@ pub(super) struct AdminCreateUserForm {
 pub(super) async fn admin_create_user(
     State(state): State<AppState>,
     jar: CookieJar,
+    headers: HeaderMap,
     axum::Form(form): axum::Form<AdminCreateUserForm>,
-) -> AppResult<Redirect> {
+) -> AppResult<Response> {
+    let settings = state.settings().await?;
     let user = current_user(&state, &jar).await?;
     if !policy::can_admin(user.as_ref()) {
         return Err(AppError::Forbidden);
@@ -128,7 +153,19 @@ pub(super) async fn admin_create_user(
             "admin UI",
         )
         .await?;
-    Ok(Redirect::to("/admin/users"))
+    if htmx_request(&headers) {
+        Ok(render_admin_users_page(
+            &state,
+            &settings,
+            user.as_ref(),
+            None,
+            "admin_users_lists.html",
+        )
+        .await?
+        .into_response())
+    } else {
+        Ok(Redirect::to("/admin/users").into_response())
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -140,9 +177,11 @@ pub(super) struct AdminRoleForm {
 pub(super) async fn admin_set_user_role(
     State(state): State<AppState>,
     jar: CookieJar,
+    headers: HeaderMap,
     Path(id): Path<String>,
     axum::Form(form): axum::Form<AdminRoleForm>,
-) -> AppResult<Redirect> {
+) -> AppResult<Response> {
+    let settings = state.settings().await?;
     let user = current_user(&state, &jar).await?;
     if !policy::can_admin(user.as_ref()) {
         return Err(AppError::Forbidden);
@@ -163,34 +202,50 @@ pub(super) async fn admin_set_user_role(
             role.as_str(),
         )
         .await?;
-    Ok(Redirect::to("/admin/users"))
+    if htmx_request(&headers) {
+        Ok(render_admin_users_page(
+            &state,
+            &settings,
+            user.as_ref(),
+            None,
+            "admin_users_lists.html",
+        )
+        .await?
+        .into_response())
+    } else {
+        Ok(Redirect::to("/admin/users").into_response())
+    }
 }
 
 pub(super) async fn admin_disable_user(
     State(state): State<AppState>,
     jar: CookieJar,
+    headers: HeaderMap,
     Path(id): Path<String>,
     axum::Form(form): axum::Form<CsrfForm>,
-) -> AppResult<Redirect> {
-    set_user_disabled_from_admin(state, jar, id, true, form.csrf_token).await
+) -> AppResult<Response> {
+    set_user_disabled_from_admin(state, jar, headers, id, true, form.csrf_token).await
 }
 
 pub(super) async fn admin_enable_user(
     State(state): State<AppState>,
     jar: CookieJar,
+    headers: HeaderMap,
     Path(id): Path<String>,
     axum::Form(form): axum::Form<CsrfForm>,
-) -> AppResult<Redirect> {
-    set_user_disabled_from_admin(state, jar, id, false, form.csrf_token).await
+) -> AppResult<Response> {
+    set_user_disabled_from_admin(state, jar, headers, id, false, form.csrf_token).await
 }
 
 async fn set_user_disabled_from_admin(
     state: AppState,
     jar: CookieJar,
+    headers: HeaderMap,
     id: String,
     disabled: bool,
     csrf_token: Option<String>,
-) -> AppResult<Redirect> {
+) -> AppResult<Response> {
+    let settings = state.settings().await?;
     let user = current_user(&state, &jar).await?;
     if !policy::can_admin(user.as_ref()) {
         return Err(AppError::Forbidden);
@@ -215,7 +270,19 @@ async fn set_user_disabled_from_admin(
             "admin UI",
         )
         .await?;
-    Ok(Redirect::to("/admin/users"))
+    if htmx_request(&headers) {
+        Ok(render_admin_users_page(
+            &state,
+            &settings,
+            user.as_ref(),
+            None,
+            "admin_users_lists.html",
+        )
+        .await?
+        .into_response())
+    } else {
+        Ok(Redirect::to("/admin/users").into_response())
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -228,8 +295,9 @@ pub(super) struct AdminInviteForm {
 pub(super) async fn admin_create_invite(
     State(state): State<AppState>,
     jar: CookieJar,
+    headers: HeaderMap,
     axum::Form(form): axum::Form<AdminInviteForm>,
-) -> AppResult<Html<String>> {
+) -> AppResult<Response> {
     let settings = state.settings().await?;
     let user = current_user(&state, &jar).await?;
     if !policy::can_admin(user.as_ref()) {
@@ -257,23 +325,29 @@ pub(super) async fn admin_create_invite(
             expires_at,
         )
         .await?;
-    let users = state.db.list_users().await?;
-    let invites = state.db.list_invite_tokens().await?;
-    render(
+    Ok(render_admin_users_page(
         &state,
-        "admin_users.html",
         &settings,
         user.as_ref(),
-        serde_json::json!({ "users": users, "invites": invites, "invite_token": token }),
+        Some(token),
+        if htmx_request(&headers) {
+            "admin_users_lists.html"
+        } else {
+            "admin_users.html"
+        },
     )
+    .await?
+    .into_response())
 }
 
 pub(super) async fn admin_revoke_invite(
     State(state): State<AppState>,
     jar: CookieJar,
+    headers: HeaderMap,
     Path(id): Path<String>,
     axum::Form(form): axum::Form<CsrfForm>,
-) -> AppResult<Redirect> {
+) -> AppResult<Response> {
+    let settings = state.settings().await?;
     let user = current_user(&state, &jar).await?;
     if !policy::can_admin(user.as_ref()) {
         return Err(AppError::Forbidden);
@@ -283,7 +357,19 @@ pub(super) async fn admin_revoke_invite(
         .db
         .revoke_invite_token(&id, user.as_ref().map(|user| user.id.as_str()))
         .await?;
-    Ok(Redirect::to("/admin/users"))
+    if htmx_request(&headers) {
+        Ok(render_admin_users_page(
+            &state,
+            &settings,
+            user.as_ref(),
+            None,
+            "admin_users_lists.html",
+        )
+        .await?
+        .into_response())
+    } else {
+        Ok(Redirect::to("/admin/users").into_response())
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -619,6 +705,7 @@ pub(super) struct AdminReportsQuery {
 pub(super) async fn admin_reports(
     State(state): State<AppState>,
     jar: CookieJar,
+    headers: HeaderMap,
     Query(query): Query<AdminReportsQuery>,
 ) -> AppResult<Html<String>> {
     let settings = state.settings().await?;
@@ -642,7 +729,11 @@ pub(super) async fn admin_reports(
         .await?;
     render(
         &state,
-        "reports.html",
+        if htmx_request(&headers) {
+            "reports_table.html"
+        } else {
+            "reports.html"
+        },
         &settings,
         user.as_ref(),
         serde_json::json!({
@@ -657,19 +748,81 @@ pub(super) async fn admin_reports(
     )
 }
 
+async fn render_reports_table(
+    state: &AppState,
+    settings: &RuntimeSettings,
+    user: Option<&User>,
+    state_value: Option<String>,
+    kind_value: Option<String>,
+    reason_value: Option<String>,
+    days_value: Option<i64>,
+) -> AppResult<Html<String>> {
+    let state_text = state_value.unwrap_or_default();
+    let kind_text = kind_value.unwrap_or_default();
+    let reason_text = reason_value.unwrap_or_default();
+    let state_filter = state_text.as_str().trim();
+    let kind_filter = kind_text.as_str().trim();
+    let reason_filter = reason_text.as_str().trim();
+    let created_after = days_value
+        .filter(|days| *days > 0)
+        .map(|days| util::now_ts() - days * 60 * 60 * 24);
+    let reports = state
+        .db
+        .list_reports_filtered(
+            if state_filter.is_empty() {
+                None
+            } else {
+                Some(state_filter)
+            },
+            if kind_filter.is_empty() {
+                None
+            } else {
+                Some(kind_filter)
+            },
+            if reason_filter.is_empty() {
+                None
+            } else {
+                Some(reason_filter)
+            },
+            created_after,
+        )
+        .await?;
+    render(
+        state,
+        "reports_table.html",
+        settings,
+        user,
+        serde_json::json!({
+            "reports": reports,
+            "filters": {
+                "state": state_text,
+                "kind": kind_text,
+                "reason": reason_text,
+                "days": days_value,
+            },
+        }),
+    )
+}
+
 #[derive(Debug, Deserialize)]
 pub(super) struct AdminReportActionForm {
     pub(super) action: String,
     pub(super) note: Option<String>,
+    filter_state: Option<String>,
+    filter_kind: Option<String>,
+    filter_reason: Option<String>,
+    filter_days: Option<i64>,
     csrf_token: Option<String>,
 }
 
 pub(super) async fn admin_update_report(
     State(state): State<AppState>,
     jar: CookieJar,
+    headers: HeaderMap,
     Path(id): Path<String>,
     axum::Form(form): axum::Form<AdminReportActionForm>,
-) -> AppResult<Redirect> {
+) -> AppResult<Response> {
+    let settings = state.settings().await?;
     let user = current_user(&state, &jar).await?;
     if !policy::can_moderate(user.as_ref()) {
         return Err(AppError::Forbidden);
@@ -684,7 +837,21 @@ pub(super) async fn admin_update_report(
         form.note.as_deref(),
     )
     .await?;
-    Ok(Redirect::to("/admin/reports"))
+    if htmx_request(&headers) {
+        Ok(render_reports_table(
+            &state,
+            &settings,
+            user.as_ref(),
+            form.filter_state,
+            form.filter_kind,
+            form.filter_reason,
+            form.filter_days,
+        )
+        .await?
+        .into_response())
+    } else {
+        Ok(Redirect::to("/admin/reports").into_response())
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -693,14 +860,20 @@ pub(super) struct AdminBulkReportActionForm {
     note: Option<String>,
     #[serde(default)]
     report_ids: Vec<String>,
+    filter_state: Option<String>,
+    filter_kind: Option<String>,
+    filter_reason: Option<String>,
+    filter_days: Option<i64>,
     csrf_token: Option<String>,
 }
 
 pub(super) async fn admin_bulk_update_reports(
     State(state): State<AppState>,
     jar: CookieJar,
+    headers: HeaderMap,
     axum::Form(form): axum::Form<AdminBulkReportActionForm>,
-) -> AppResult<Redirect> {
+) -> AppResult<Response> {
+    let settings = state.settings().await?;
     let user = current_user(&state, &jar).await?;
     if !policy::can_moderate(user.as_ref()) {
         return Err(AppError::Forbidden);
@@ -722,7 +895,21 @@ pub(super) async fn admin_bulk_update_reports(
         )
         .await?;
     }
-    Ok(Redirect::to("/admin/reports"))
+    if htmx_request(&headers) {
+        Ok(render_reports_table(
+            &state,
+            &settings,
+            user.as_ref(),
+            form.filter_state,
+            form.filter_kind,
+            form.filter_reason,
+            form.filter_days,
+        )
+        .await?
+        .into_response())
+    } else {
+        Ok(Redirect::to("/admin/reports").into_response())
+    }
 }
 
 pub(super) async fn apply_report_action(

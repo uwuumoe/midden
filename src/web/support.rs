@@ -71,6 +71,13 @@ pub(super) fn render<S: Serialize>(
     )?))
 }
 
+pub(super) fn htmx_request(headers: &HeaderMap) -> bool {
+    headers
+        .get("HX-Request")
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.eq_ignore_ascii_case("true"))
+}
+
 pub(super) async fn current_user(state: &AppState, jar: &CookieJar) -> AppResult<Option<User>> {
     let Some(cookie) = jar.get(&state.config.security.session_cookie_name) else {
         return Ok(None);

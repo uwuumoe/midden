@@ -164,6 +164,33 @@ textarea {
   color: oklch(0.42 0.16 30);
 }
 
+.field-note,
+.muted {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+button:disabled {
+  border-color: var(--line);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+button:disabled:hover { background: var(--surface); }
+
+.settings-section {
+  border-block-start: 1px solid var(--line);
+  padding: 8px 0;
+  text-align: left;
+}
+
+.settings-section summary {
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 18px;
+  font-weight: 700;
+}
+
 .homepage-blocks {
   margin: 24px 0;
   text-align: left;

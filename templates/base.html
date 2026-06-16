@@ -12,7 +12,7 @@
   {% block head_extra %}{% endblock %}
   <style>:root { --accent: {{ settings.branding.accent_color }}; } {{ settings.branding.custom_css | safe }}</style>
 </head>
-<body class="theme-{{ settings.branding.dark_mode }}">
+<body class="theme-{{ settings.branding.dark_mode }}" x-data>
   <div class="page">
     <header class="site-head">
       <a class="brand" href="/">
@@ -66,6 +66,8 @@
     <option value="7d"></option>
     <option value="30d"></option>
   </datalist>
+  <script defer src="/static/vendor/htmx.min.js"></script>
+  <script defer src="/static/vendor/alpine.min.js"></script>
   <script src="/static/midden.js"></script>
 </body>
 </html>

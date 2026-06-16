@@ -3,11 +3,10 @@
 {% block content %}
   <h2>Paste created</h2>
   <p>Your paste is available at:</p>
-  <p><input class="copy-field" value="{{ page.url }}" readonly></p>
+  <p x-data="{ copied: false }"><input class="copy-field" value="{{ page.url }}" readonly x-ref="url"> <button type="button" x-on:click="middenCopy($refs.url.value).then(() => { copied = true; setTimeout(() => copied = false, 1600) })" x-text="copied ? 'Copied' : 'Copy link'">Copy link</button></p>
   <p><a href="{{ page.url }}">Open paste</a> | <a href="{{ page.raw_url }}">Raw paste</a> | <a href="/delete/paste/{{ page.paste.public_id }}">Delete</a>{% if current_user %} | <a href="/account">Account</a>{% endif %}</p>
   {% if page.delete_token %}
-    <p class="notice">Delete token, shown once: <code>{{ page.delete_token }}</code></p>
+    <p class="notice" x-data="{ copied: false }">Delete token, shown once: <code x-ref="token">{{ page.delete_token }}</code> <button type="button" x-on:click="middenCopy($refs.token.textContent).then(() => { copied = true; setTimeout(() => copied = false, 1600) })" x-text="copied ? 'Copied' : 'Copy token'">Copy token</button></p>
     <p>Log in later and use <a href="/claim/paste/{{ page.paste.public_id }}">claim paste</a> with that token to attach it to your account.</p>
   {% endif %}
 {% endblock %}
-
