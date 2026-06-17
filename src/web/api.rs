@@ -165,11 +165,13 @@ pub(super) async fn api_upload_file(
         &settings,
         user.as_ref(),
         form.file,
-        parse_expiry_or_default(
+        parse_expiry_or_default_checked(
+            &settings,
+            user.as_ref(),
+            "file",
             form.expires.as_deref(),
             settings.limits.default_file_expiry.as_deref(),
-        )
-        .map_err(|err| AppError::BadRequest(format!("invalid expiry: {err}")))?,
+        )?,
         requested_visibility(&settings, form.visibility.as_deref())?,
     )
     .await?;
@@ -322,11 +324,13 @@ pub(super) async fn api_create_paste(
             syntax: syntax.as_deref(),
             owner_user_id: user.as_ref().map(|u| u.id.as_str()),
             delete_token_hash: delete_hash.as_deref(),
-            expires_at: parse_expiry_or_default(
+            expires_at: parse_expiry_or_default_checked(
+                &settings,
+                user.as_ref(),
+                "paste",
                 input.expires.as_deref(),
                 settings.limits.default_paste_expiry.as_deref(),
-            )
-            .map_err(|err| AppError::BadRequest(format!("invalid expiry: {err}")))?,
+            )?,
             visibility: requested_visibility(&settings, input.visibility.as_deref())?,
         })
         .await?;
@@ -485,6 +489,7 @@ pub(super) async fn api_claim_item(
 pub(super) struct CreateTokenRequest {
     name: String,
     scopes: Vec<String>,
+    expires_in_seconds: Option<i64>,
 }
 
 pub(super) async fn api_list_tokens(
@@ -515,21 +520,48 @@ pub(super) async fn api_create_token(
         .await?
         .ok_or(AppError::Unauthorized)?;
     enforce_rate_limit(&state, &settings, "api_create_token", &headers, Some(&user)).await?;
+    let expires_at = api_token_expires_at(&settings, input.expires_in_seconds)?;
     let token = format!("mdd_{}", util::secret_token());
     state
         .db
-        .create_api_token(
+        .create_api_token_with_expiry(
             &user.id,
             &input.name,
             &util::hash_token(&token),
             &input.scopes,
+            expires_at,
         )
         .await?;
     state
         .db
         .audit(Some(&user.id), "api_token.created", &user.id, &input.name)
         .await?;
-    Ok(axum::Json(serde_json::json!({ "token": token })))
+    Ok(axum::Json(
+        serde_json::json!({ "token": token, "expires_at": expires_at }),
+    ))
+}
+
+fn api_token_expires_at(
+    settings: &RuntimeSettings,
+    requested_ttl_seconds: Option<i64>,
+) -> AppResult<Option<i64>> {
+    let ttl = requested_ttl_seconds.or(settings.tokens.default_ttl_seconds);
+    let Some(ttl) = ttl else {
+        return Ok(None);
+    };
+    if ttl <= 0 {
+        return Err(AppError::BadRequest(
+            "token TTL must be positive".to_string(),
+        ));
+    }
+    if let Some(max) = settings.tokens.max_ttl_seconds
+        && ttl > max
+    {
+        return Err(AppError::BadRequest(
+            "token TTL exceeds configured maximum".to_string(),
+        ));
+    }
+    Ok(Some(util::now_ts().saturating_add(ttl)))
 }
 
 pub(super) async fn api_revoke_token(

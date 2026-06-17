@@ -8,6 +8,7 @@
   {% endif %}
   <form method="post" action="/account/tokens" hx-post="/account/tokens" hx-target="#account-tokens" hx-swap="outerHTML" hx-indicator="#account-tokens-indicator" hx-disabled-elt="find button" x-data="{ scopes: ['files:write','pastes:write','files:read','pastes:read'] }">
     <p><label>Name<br><input name="name" required placeholder="script uploads"></label></p>
+    <p><label>Expires in seconds, optional<br><input type="number" min="1" name="expires_in_seconds"></label></p>
     <fieldset class="scope-grid">
       <legend>Scopes</legend>
       {% for scope in ["files:write", "pastes:write", "files:read", "pastes:read", "files:delete", "pastes:delete", "items:claim", "reports:write", "tokens:read", "tokens:write"] %}
@@ -19,12 +20,14 @@
   </form>
   {% if page.tokens %}
     <table class="table-card">
-      <thead><tr><th>Name</th><th>Scopes</th><th>Status</th><th>Actions</th></tr></thead>
+      <thead><tr><th>Name</th><th>Scopes</th><th>Expires</th><th>Last used</th><th>Status</th><th>Actions</th></tr></thead>
       <tbody>
       {% for token in page.tokens %}
         <tr>
           <td data-label="Name">{{ token.name }}</td>
           <td data-label="Scopes">{{ token.scopes | join(", ") }}</td>
+          <td data-label="Expires">{{ token.expires_at or "" }}</td>
+          <td data-label="Last used">{{ token.last_used_at or "" }}</td>
           <td data-label="Status"><span class="status-badge {% if token.revoked_at %}status-badge--revoked{% else %}status-badge--active{% endif %}">{% if token.revoked_at %}revoked{% else %}active{% endif %}</span></td>
           <td data-label="Actions">
             {% if not token.revoked_at %}

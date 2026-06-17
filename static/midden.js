@@ -177,7 +177,8 @@
   const uploadButton = uploadForm.querySelector("button[type=submit]");
   const uploadCancel = uploadForm.querySelector("[data-upload-cancel]");
   const uploadResume = uploadForm.querySelector("[data-upload-resume]");
-  const chunkSize = 1024 * 1024;
+  const configuredChunkSize = Number(uploadForm.getAttribute("data-upload-chunk-bytes") || "");
+  const chunkSize = Number.isFinite(configuredChunkSize) && configuredChunkSize > 0 ? configuredChunkSize : 1024 * 1024;
   let uploadAbortController = null;
 
   function formatFileSize(bytes) {

@@ -209,6 +209,8 @@ pub struct ApiTokenSummary {
     pub id: String,
     pub name: String,
     pub scopes: Vec<String>,
+    pub expires_at: Option<i64>,
+    pub last_used_at: Option<i64>,
     pub revoked_at: Option<i64>,
     pub created_at: i64,
 }
@@ -220,6 +222,8 @@ impl ApiTokenSummary {
             id: row.try_get("id")?,
             name: row.try_get("name")?,
             scopes: serde_json::from_str(&scopes_json).unwrap_or_default(),
+            expires_at: row.try_get("expires_at")?,
+            last_used_at: row.try_get("last_used_at")?,
             revoked_at: row.try_get("revoked_at")?,
             created_at: row.try_get("created_at")?,
         })

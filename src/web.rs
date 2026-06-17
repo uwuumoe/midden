@@ -23,8 +23,8 @@ use crate::{
     app::{AppError, AppResult, AppState},
     config::{
         ActionRule, ContentDispositionMode, DeletePolicy, FeatureConfig, HomepageBlock,
-        PolicyConfig, RateLimitConfig, RuntimeSettings, ScanDecision, ScannerAdapterConfig,
-        SignupMode,
+        PolicyConfig, RateLimitBackend, RateLimitConfig, RuntimeSettings, ScanDecision,
+        ScannerAdapterConfig, SignupMode,
     },
     db::{FileItem, NewFileItem, NewPaste, NewUploadSession, Paste, Role, User},
     policy, processing, quota,
@@ -142,7 +142,9 @@ pub fn router(state: AppState) -> Router {
         .route("/account/deactivate", post(account_deactivate))
         .route("/account/tokens", post(account_create_token))
         .route("/account/tokens/{id}/revoke", post(account_revoke_token))
+        .route("/account/items/bulk", post(account_bulk_items))
         .route("/admin", get(admin))
+        .route("/admin/jobs", get(admin_jobs).post(admin_jobs_run_once))
         .route("/admin/search", get(admin_search))
         .route("/admin/users", get(admin_users).post(admin_create_user))
         .route("/admin/users/invites", post(admin_create_invite))

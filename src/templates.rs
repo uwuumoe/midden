@@ -150,6 +150,10 @@ const BUILTIN_TEMPLATES: &[(&str, &str)] = &[
         include_str!("../templates/admin_item.html"),
     ),
     (
+        "admin_jobs.html",
+        include_str!("../templates/admin_jobs.html"),
+    ),
+    (
         "report_form.html",
         include_str!("../templates/report_form.html"),
     ),

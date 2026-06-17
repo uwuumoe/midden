@@ -117,10 +117,25 @@ pub(super) async fn enforce_rate_limit(
     user: Option<&User>,
 ) -> AppResult<()> {
     let identity = rate_limit_identity(state, headers, user);
-    let result = state
-        .rate_limiter
-        .check(action, &identity, settings.security.rate_limits.get(action))
-        .await;
+    let result = match settings.security.rate_limit_backend {
+        RateLimitBackend::Memory => {
+            state
+                .rate_limiter
+                .check(action, &identity, settings.security.rate_limits.get(action))
+                .await
+        }
+        RateLimitBackend::Database => {
+            if state
+                .db
+                .check_rate_limit(action, &identity, settings.security.rate_limits.get(action))
+                .await?
+            {
+                Ok(())
+            } else {
+                Err(AppError::TooManyRequests)
+            }
+        }
+    };
     if matches!(result, Err(AppError::TooManyRequests)) {
         state.metrics.rate_limit_rejections.inc();
     }
@@ -239,14 +254,18 @@ pub(super) fn requested_visibility(
         Some("public") => Err(AppError::BadRequest(
             "public visibility requires public browse to be enabled".to_string(),
         )),
+        Some("private") => Ok("private"),
         _ => Err(AppError::BadRequest("invalid visibility".to_string())),
     }
 }
 
-pub(super) fn parse_expiry_or_default(
+pub(super) fn parse_expiry_or_default_checked(
+    settings: &RuntimeSettings,
+    user: Option<&User>,
+    kind: &str,
     input: Option<&str>,
     default_input: Option<&str>,
-) -> anyhow::Result<Option<i64>> {
+) -> AppResult<Option<i64>> {
     let selected = input
         .map(str::trim)
         .filter(|value| !value.is_empty())
@@ -255,7 +274,60 @@ pub(super) fn parse_expiry_or_default(
                 .map(str::trim)
                 .filter(|value| !value.is_empty())
         });
-    util::parse_expiry(selected)
+    let expiry = util::parse_expiry(selected)
+        .map_err(|err| AppError::BadRequest(format!("invalid expiry: {err}")))?;
+    if expiry.is_none() && !settings.limits.expiry.allow_never {
+        return Err(AppError::BadRequest(
+            "never-expiring items are disabled".to_string(),
+        ));
+    }
+    let Some(expiry) = expiry else {
+        return Ok(None);
+    };
+    let max_input = match (kind, user.is_some()) {
+        ("file", false) => settings.limits.expiry.anonymous_max_file_expiry.as_deref(),
+        ("file", true) => settings.limits.expiry.user_max_file_expiry.as_deref(),
+        ("paste", false) => settings.limits.expiry.anonymous_max_paste_expiry.as_deref(),
+        ("paste", true) => settings.limits.expiry.user_max_paste_expiry.as_deref(),
+        _ => None,
+    };
+    if let Some(max_input) = max_input {
+        let now = util::now_ts();
+        let max_expiry = util::parse_expiry(Some(max_input))
+            .map_err(|err| AppError::BadRequest(format!("invalid max expiry config: {err}")))?
+            .ok_or_else(|| AppError::BadRequest("max expiry cannot be never".to_string()))?;
+        if expiry.saturating_sub(now) > max_expiry.saturating_sub(now) {
+            return Err(AppError::BadRequest(
+                "expiry exceeds configured maximum".to_string(),
+            ));
+        }
+    }
+    Ok(Some(expiry))
+}
+
+pub(super) fn authorize_item_view(
+    settings: &RuntimeSettings,
+    user: Option<&User>,
+    owner_user_id: Option<&str>,
+    visibility: &str,
+) -> AppResult<()> {
+    if user.is_some_and(|user| user.role >= Role::Admin) {
+        return Ok(());
+    }
+    if visibility == "private" {
+        let Some(user) = user else {
+            return Err(AppError::Forbidden);
+        };
+        if owner_user_id == Some(user.id.as_str()) {
+            return Ok(());
+        }
+        return Err(AppError::Forbidden);
+    }
+    if policy::allowed(settings.policy.view_item, user) {
+        Ok(())
+    } else {
+        Err(AppError::Forbidden)
+    }
 }
 
 pub(super) fn normalize_syntax(input: Option<&str>) -> Option<String> {

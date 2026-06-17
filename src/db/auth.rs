@@ -469,22 +469,24 @@ impl Database {
         Ok(())
     }
 
-    pub async fn create_api_token(
+    pub async fn create_api_token_with_expiry(
         &self,
         user_id: &str,
         name: &str,
         token_hash: &str,
         scopes: &[String],
+        expires_at: Option<i64>,
     ) -> anyhow::Result<()> {
         self.query(
-            "INSERT INTO api_tokens (id, user_id, name, token_hash, scopes_json, revoked_at, created_at)
-             VALUES (?, ?, ?, ?, ?, NULL, ?)",
+            "INSERT INTO api_tokens (id, user_id, name, token_hash, scopes_json, expires_at, last_used_at, revoked_at, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, ?)",
         )
         .bind(uuid::Uuid::new_v4().to_string())
         .bind(user_id)
         .bind(name)
         .bind(token_hash)
         .bind(serde_json::to_string(scopes)?)
+        .bind(expires_at)
         .bind(util::now_ts())
         .execute(&self.pool)
         .await?;
@@ -494,7 +496,7 @@ impl Database {
     pub async fn list_api_tokens(&self, user_id: &str) -> anyhow::Result<Vec<ApiTokenSummary>> {
         let rows = self
             .query(
-                "SELECT id, name, scopes_json, revoked_at, created_at
+                "SELECT id, name, scopes_json, expires_at, last_used_at, revoked_at, created_at
              FROM api_tokens WHERE user_id = ? ORDER BY created_at DESC",
             )
             .bind(user_id)
@@ -520,12 +522,13 @@ impl Database {
     ) -> anyhow::Result<Option<User>> {
         let row = self.query(
             "SELECT u.id, u.email, u.username, u.password_hash, u.role, u.is_disabled, u.email_verified_at, u.two_factor_enabled, u.created_at,
-                    t.scopes_json
+                    t.id AS token_id, t.scopes_json
              FROM api_tokens t
              JOIN users u ON u.id = t.user_id
-             WHERE t.token_hash = ? AND t.revoked_at IS NULL AND u.is_disabled = 0",
+             WHERE t.token_hash = ? AND t.revoked_at IS NULL AND (t.expires_at IS NULL OR t.expires_at > ?) AND u.is_disabled = 0",
         )
         .bind(token_hash)
+        .bind(util::now_ts())
         .fetch_optional(&self.pool)
         .await?;
         let Some(row) = row else {
@@ -537,6 +540,12 @@ impl Database {
             .iter()
             .any(|scope| scope == "*" || scope == required_scope)
         {
+            let token_id: String = row.try_get("token_id")?;
+            self.query("UPDATE api_tokens SET last_used_at = ? WHERE id = ?")
+                .bind(util::now_ts())
+                .bind(token_id)
+                .execute(&self.pool)
+                .await?;
             return Ok(Some(User::from_row(&row)?));
         }
         Ok(None)

@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Background jobs | {{ settings.branding.instance_name }}{% endblock %}
+{% block page_classes %} page--wide page--admin{% endblock %}
+{% block content %}
+  <h2>Background jobs</h2>
+  <nav class="admin-nav" aria-label="Admin">
+    <a href="/admin">Settings</a>
+    <a href="/admin/users">Users</a>
+    <a href="/admin/search">Search files and pastes</a>
+    <a href="/admin/reports">Reports</a>
+  </nav>
+
+  <form method="post" action="/admin/jobs">
+    <p><button type="submit">Run once</button></p>
+  </form>
+
+  {% if page.summary %}
+    <h3>Last run</h3>
+    <table class="table-card">
+      <tbody>
+      <tr><th>Expired files</th><td data-label="Expired files">{{ page.summary.expired_files }}</td></tr>
+      <tr><th>Expired pastes</th><td data-label="Expired pastes">{{ page.summary.expired_pastes }}</td></tr>
+      <tr><th>Expired upload sessions</th><td data-label="Expired upload sessions">{{ page.summary.expired_upload_sessions }}</td></tr>
+      <tr><th>Deleted blobs</th><td data-label="Deleted blobs">{{ page.summary.deleted_blobs }}</td></tr>
+      <tr><th>Deleted temp files</th><td data-label="Deleted temp files">{{ page.summary.deleted_temp_files }}</td></tr>
+      <tr><th>Scanner retries</th><td data-label="Scanner retries">{{ page.summary.scanner_retries }}</td></tr>
+      <tr><th>Metadata updates</th><td data-label="Metadata updates">{{ page.summary.metadata_updates }}</td></tr>
+      <tr><th>Missing blobs</th><td data-label="Missing blobs">{{ page.summary.missing_blobs }}</td></tr>
+      <tr><th>Orphaned blobs</th><td data-label="Orphaned blobs">{{ page.summary.orphaned_blobs }}</td></tr>
+      </tbody>
+    </table>
+  {% else %}
+    <p>No job run has been started from this page.</p>
+  {% endif %}
+{% endblock %}

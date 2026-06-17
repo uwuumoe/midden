@@ -75,6 +75,10 @@ impl Database {
             .await?;
         self.add_column_if_missing("users", "two_factor_enabled INTEGER NOT NULL DEFAULT 0")
             .await?;
+        self.add_column_if_missing("api_tokens", "expires_at INTEGER")
+            .await?;
+        self.add_column_if_missing("api_tokens", "last_used_at INTEGER")
+            .await?;
         if added_email_verified_at {
             self.query(
                 "UPDATE users SET email_verified_at = created_at WHERE email_verified_at IS NULL",
@@ -176,6 +180,55 @@ impl Database {
         .await?;
         Ok(())
     }
+
+    pub async fn check_rate_limit(
+        &self,
+        action: &str,
+        identity: &str,
+        config: Option<&crate::config::RateLimitConfig>,
+    ) -> anyhow::Result<bool> {
+        let Some(config) = config.filter(|config| config.enabled) else {
+            return Ok(true);
+        };
+        if config.requests == 0 || config.window_seconds == 0 {
+            return Ok(false);
+        }
+        let now = util::now_ts();
+        let key = format!("{action}:{identity}");
+        let row = self
+            .query("SELECT window_start, count FROM rate_limit_buckets WHERE key = ?")
+            .bind(&key)
+            .fetch_optional(&self.pool)
+            .await?;
+        let Some(row) = row else {
+            self.query(
+                "INSERT INTO rate_limit_buckets (key, window_start, count) VALUES (?, ?, 1)",
+            )
+            .bind(&key)
+            .bind(now)
+            .execute(&self.pool)
+            .await?;
+            return Ok(true);
+        };
+        let window_start: i64 = row.try_get("window_start")?;
+        let count: i64 = row.try_get("count")?;
+        if now.saturating_sub(window_start) >= config.window_seconds as i64 {
+            self.query("UPDATE rate_limit_buckets SET window_start = ?, count = 1 WHERE key = ?")
+                .bind(now)
+                .bind(&key)
+                .execute(&self.pool)
+                .await?;
+            return Ok(true);
+        }
+        if count >= i64::from(config.requests) {
+            return Ok(false);
+        }
+        self.query("UPDATE rate_limit_buckets SET count = count + 1 WHERE key = ?")
+            .bind(&key)
+            .execute(&self.pool)
+            .await?;
+        Ok(true)
+    }
 }
 
 fn is_duplicate_column_error(err: &sqlx::Error) -> bool {
@@ -210,6 +263,52 @@ mod tests {
             .unwrap();
         let settings = db.runtime_settings(&config).await.unwrap();
         assert!(!settings.features.pastes);
+    }
+
+    #[tokio::test]
+    async fn config_runtime_settings_include_operator_controls() {
+        let db = test_db().await;
+        let config = AppConfig::default();
+        let settings = db.runtime_settings(&config).await.unwrap();
+
+        assert_eq!(
+            settings.security.rate_limit_backend,
+            crate::config::RateLimitBackend::Memory
+        );
+        assert_eq!(
+            settings.metrics.access,
+            crate::config::MetricsAccessMode::Public
+        );
+        assert!(settings.metrics.enabled);
+        assert!(settings.uploads.upload_session_ttl_seconds > 0);
+        assert!(settings.uploads.max_chunk_bytes > 0);
+        assert!(
+            settings
+                .limits
+                .expiry
+                .allowed_presets
+                .contains(&"7d".to_string())
+        );
+        assert!(settings.security.url_upload.request_timeout_seconds > 0);
+        assert!(
+            settings
+                .security
+                .content_policy
+                .forced_attachment_mime_types
+                .contains(&"text/html".to_string())
+        );
+        assert!(settings.tokens.default_ttl_seconds.is_none());
+        assert!(settings.processing.thumbnail_max_dimension > 0);
+        assert!(settings.moderation.notify_webhook_url.is_none());
+
+        let mut metrics = settings.metrics.clone();
+        metrics.access = crate::config::MetricsAccessMode::Admin;
+        db.set_json_setting("metrics", &metrics).await.unwrap();
+        let settings = db.runtime_settings(&config).await.unwrap();
+        assert_eq!(
+            settings.metrics.access,
+            crate::config::MetricsAccessMode::Admin
+        );
     }
 
     #[tokio::test]

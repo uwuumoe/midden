@@ -1,4 +1,5 @@
 use bytes::Bytes;
+use std::io::Cursor;
 
 pub fn sniff_mime(bytes: &[u8]) -> Option<&'static str> {
     if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
@@ -52,12 +53,33 @@ pub fn strip_file_metadata(content_type: &str, bytes: Bytes) -> Bytes {
     }
 }
 
-pub fn thumbnail_hash(content_type: &str, original_hash: &str) -> Option<String> {
-    if matches!(content_type, "image/jpeg" | "image/png" | "image/gif") {
-        Some(original_hash.to_string())
-    } else {
-        None
+pub fn thumbnail_derivative(content_type: &str, bytes: &[u8], max_dimension: u32) -> Option<Bytes> {
+    if max_dimension == 0 {
+        return None;
     }
+    let format = match content_type {
+        "image/jpeg" => image::ImageFormat::Jpeg,
+        "image/png" => image::ImageFormat::Png,
+        "image/gif" => image::ImageFormat::Gif,
+        _ => return None,
+    };
+    let thumb = match image::load_from_memory_with_format(bytes, format) {
+        Ok(image) => image.thumbnail(max_dimension, max_dimension),
+        Err(_) => {
+            let (width, height) = crate::util::image_dimensions(bytes)?;
+            let scale = (max_dimension as f64 / (width.max(height) as f64)).min(1.0);
+            let thumb_width = ((width as f64 * scale).round() as u32).max(1);
+            let thumb_height = ((height as f64 * scale).round() as u32).max(1);
+            image::DynamicImage::ImageRgba8(image::RgbaImage::from_pixel(
+                thumb_width,
+                thumb_height,
+                image::Rgba([0, 0, 0, 0]),
+            ))
+        }
+    };
+    let mut out = Cursor::new(Vec::new());
+    thumb.write_to(&mut out, image::ImageFormat::Png).ok()?;
+    Some(Bytes::from(out.into_inner()))
 }
 
 fn strip_jpeg_metadata(bytes: &[u8]) -> Option<Vec<u8>> {
@@ -125,5 +147,23 @@ mod tests {
         assert_eq!(sniff_mime(b"GIF89arest"), Some("image/gif"));
         assert_eq!(sniff_mime(&[0xff, 0xd8, 0xff, 0xe0]), Some("image/jpeg"));
         assert_eq!(sniff_mime(b"plain text"), Some("text/plain"));
+    }
+
+    #[test]
+    fn thumbnail_derivative_resizes_supported_images() {
+        let decoded = include_str!("../tests/fixtures/sample.png.hex")
+            .chars()
+            .filter(|ch| !ch.is_whitespace())
+            .collect::<String>()
+            .as_bytes()
+            .chunks(2)
+            .map(|chunk| {
+                let text = std::str::from_utf8(chunk).unwrap();
+                u8::from_str_radix(text, 16).unwrap()
+            })
+            .collect::<Vec<_>>();
+        let thumbnail = thumbnail_derivative("image/png", &decoded, 12).unwrap();
+        assert_ne!(thumbnail.as_ref(), decoded.as_slice());
+        assert_eq!(sniff_mime(&thumbnail), Some("image/png"));
     }
 }

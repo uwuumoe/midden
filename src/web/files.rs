@@ -32,11 +32,13 @@ pub(super) async fn upload_form_file(
         &settings,
         user.as_ref(),
         form.file,
-        parse_expiry_or_default(
+        parse_expiry_or_default_checked(
+            &settings,
+            user.as_ref(),
+            "file",
             form.expires.as_deref(),
             settings.limits.default_file_expiry.as_deref(),
-        )
-        .map_err(|err| AppError::BadRequest(format!("invalid expiry: {err}")))?,
+        )?,
         requested_visibility(&settings, form.visibility.as_deref())?,
     )
     .await?;
@@ -113,11 +115,13 @@ pub(super) async fn url_upload(
             filename,
             content_type: fetched.content_type,
         },
-        parse_expiry_or_default(
+        parse_expiry_or_default_checked(
+            &settings,
+            user.as_ref(),
+            "file",
             form.expires.as_deref(),
             settings.limits.default_file_expiry.as_deref(),
-        )
-        .map_err(|err| AppError::BadRequest(format!("invalid expiry: {err}")))?,
+        )?,
         requested_visibility(&settings, form.visibility.as_deref())?,
     )
     .await?;
@@ -159,6 +163,12 @@ pub(super) async fn file_slug(
             .map(IntoResponse::into_response);
         }
     };
+    authorize_item_view(
+        &settings,
+        user.as_ref(),
+        file.owner_user_id.as_deref(),
+        &file.visibility,
+    )?;
     if settings.features.preview_pages {
         let preview = file_preview_context(&state, &file).await?;
         let base = state.config.server.public_base_url.trim_end_matches('/');
@@ -222,13 +232,22 @@ fn render_unavailable_item(
 
 pub(super) async fn raw_file(
     State(state): State<AppState>,
+    jar: CookieJar,
     Path(id): Path<String>,
 ) -> AppResult<Response> {
+    let settings = state.settings().await?;
+    let user = current_user(&state, &jar).await?;
     let file = state
         .db
         .active_file_by_public_id(&id)
         .await?
         .ok_or(AppError::NotFound)?;
+    authorize_item_view(
+        &settings,
+        user.as_ref(),
+        file.owner_user_id.as_deref(),
+        &file.visibility,
+    )?;
     serve_file(&state, file).await
 }
 
@@ -282,9 +301,21 @@ async fn serve_file(state: &AppState, file: FileItem) -> AppResult<Response> {
         .headers_mut()
         .insert(header::CONTENT_TYPE, content_type);
     if let Some(filename) = &file.original_filename {
-        let disposition_kind = match settings.security.content_disposition {
-            ContentDispositionMode::Inline => "inline",
-            ContentDispositionMode::Attachment => "attachment",
+        let forced_attachment = file.content_type.as_deref().is_some_and(|content_type| {
+            settings
+                .security
+                .content_policy
+                .forced_attachment_mime_types
+                .iter()
+                .any(|forced| forced.eq_ignore_ascii_case(content_type))
+        });
+        let disposition_kind = if forced_attachment {
+            "attachment"
+        } else {
+            match settings.security.content_disposition {
+                ContentDispositionMode::Inline => "inline",
+                ContentDispositionMode::Attachment => "attachment",
+            }
         };
         let disposition = format!(
             "{disposition_kind}; filename=\"{}\"",

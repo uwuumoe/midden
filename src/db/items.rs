@@ -406,6 +406,38 @@ impl Database {
         Ok(result.rows_affected() > 0)
     }
 
+    pub async fn set_file_expiry(
+        &self,
+        public_id: &str,
+        owner_user_id: &str,
+        expires_at: Option<i64>,
+    ) -> anyhow::Result<bool> {
+        let result = self
+            .query("UPDATE files SET expires_at = ? WHERE public_id = ? AND owner_user_id = ?")
+            .bind(expires_at)
+            .bind(public_id)
+            .bind(owner_user_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    pub async fn set_paste_expiry(
+        &self,
+        public_id: &str,
+        owner_user_id: &str,
+        expires_at: Option<i64>,
+    ) -> anyhow::Result<bool> {
+        let result = self
+            .query("UPDATE pastes SET expires_at = ? WHERE public_id = ? AND owner_user_id = ?")
+            .bind(expires_at)
+            .bind(public_id)
+            .bind(owner_user_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
     pub async fn update_file_metadata(
         &self,
         public_id: &str,

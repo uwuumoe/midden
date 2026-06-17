@@ -33,9 +33,18 @@ pub(super) async fn fetch_url_upload(
     settings: &RuntimeSettings,
     mut url: url::Url,
 ) -> AppResult<FetchedUrlUpload> {
-    let client = reqwest::Client::builder()
+    let mut client = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
-        .build()?;
+        .connect_timeout(std::time::Duration::from_secs(
+            settings.security.url_upload.connect_timeout_seconds,
+        ))
+        .timeout(std::time::Duration::from_secs(
+            settings.security.url_upload.request_timeout_seconds,
+        ));
+    if let Some(user_agent) = settings.security.url_upload.user_agent.as_deref() {
+        client = client.user_agent(user_agent.to_string());
+    }
+    let client = client.build()?;
     for redirect_count in 0..=settings.security.url_upload.max_redirects {
         validate_url_upload_target(settings, &url).await?;
         let response = client.get(url.clone()).send().await?;
@@ -57,7 +66,12 @@ pub(super) async fn fetch_url_upload(
         }
         let response = response.error_for_status()?;
         if let Some(length) = response.content_length()
-            && length > settings.limits.max_upload_bytes as u64
+            && (length > settings.limits.max_upload_bytes as u64
+                || settings
+                    .security
+                    .url_upload
+                    .max_response_bytes
+                    .is_some_and(|limit| length > limit as u64))
         {
             return Err(AppError::PayloadTooLarge);
         }
@@ -67,7 +81,13 @@ pub(super) async fn fetch_url_upload(
             .and_then(|value| value.to_str().ok())
             .map(ToOwned::to_owned);
         let bytes = response.bytes().await?;
-        if bytes.len() as i64 > settings.limits.max_upload_bytes {
+        if bytes.len() as i64 > settings.limits.max_upload_bytes
+            || settings
+                .security
+                .url_upload
+                .max_response_bytes
+                .is_some_and(|limit| bytes.len() as i64 > limit)
+        {
             return Err(AppError::PayloadTooLarge);
         }
         return Ok(FetchedUrlUpload {
@@ -83,6 +103,15 @@ async fn validate_url_upload_target(settings: &RuntimeSettings, url: &url::Url) 
         return Err(AppError::BadRequest(
             "only http and https URLs are supported".to_string(),
         ));
+    }
+    let port = url.port_or_known_default().unwrap_or(80);
+    if !settings.security.url_upload.allowed_ports.is_empty()
+        && !settings.security.url_upload.allowed_ports.contains(&port)
+    {
+        return Err(AppError::BadRequest("URL port is not allowed".to_string()));
+    }
+    if settings.security.url_upload.blocked_ports.contains(&port) {
+        return Err(AppError::BadRequest("URL port is blocked".to_string()));
     }
     let host = url
         .host_str()
@@ -355,6 +384,25 @@ pub(super) async fn persist_file_upload(
     visibility: &str,
 ) -> AppResult<PersistedUpload> {
     let content_type = resolved_content_type(settings, &uploaded)?;
+    if let Some(filename) = uploaded.filename.as_deref()
+        && filename.len() > settings.security.content_policy.max_filename_bytes
+    {
+        return Err(AppError::BadRequest("filename is too long".to_string()));
+    }
+    if !settings
+        .security
+        .content_policy
+        .allowed_mime_types
+        .is_empty()
+        && !settings
+            .security
+            .content_policy
+            .allowed_mime_types
+            .iter()
+            .any(|allowed| allowed.eq_ignore_ascii_case(&content_type))
+    {
+        return Err(AppError::BadRequest("file type is not allowed".to_string()));
+    }
     if settings.processing.metadata_stripping {
         uploaded.bytes = processing::strip_file_metadata(&content_type, uploaded.bytes);
     }

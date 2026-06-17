@@ -20,6 +20,10 @@ pub struct AppConfig {
     pub processing: ProcessingConfig,
     pub discovery: DiscoveryConfig,
     pub jobs: JobsConfig,
+    pub uploads: UploadsConfig,
+    pub metrics: MetricsConfig,
+    pub tokens: TokensConfig,
+    pub moderation: ModerationConfig,
 }
 
 impl AppConfig {
@@ -173,6 +177,7 @@ pub struct LimitsConfig {
     pub anonymous_daily_bytes: Option<i64>,
     pub default_file_expiry: Option<String>,
     pub default_paste_expiry: Option<String>,
+    pub expiry: ExpiryGuardrailsConfig,
     pub anonymous_quota: QuotaConfig,
     pub role_quotas: BTreeMap<String, QuotaConfig>,
 }
@@ -185,6 +190,7 @@ impl Default for LimitsConfig {
             anonymous_daily_bytes: None,
             default_file_expiry: None,
             default_paste_expiry: None,
+            expiry: ExpiryGuardrailsConfig::default(),
             anonymous_quota: QuotaConfig::default(),
             role_quotas: BTreeMap::new(),
         }
@@ -205,6 +211,7 @@ impl<'de> Deserialize<'de> for LimitsConfig {
             anonymous_daily_bytes: Option<i64>,
             default_file_expiry: Option<String>,
             default_paste_expiry: Option<String>,
+            expiry: ExpiryGuardrailsConfig,
             anonymous_quota: QuotaConfig,
             role_quotas: BTreeMap<String, QuotaConfig>,
         }
@@ -224,9 +231,40 @@ impl<'de> Deserialize<'de> for LimitsConfig {
             anonymous_daily_bytes: raw.anonymous_daily_bytes,
             default_file_expiry: raw.default_file_expiry,
             default_paste_expiry: raw.default_paste_expiry,
+            expiry: raw.expiry,
             anonymous_quota: raw.anonymous_quota,
             role_quotas: raw.role_quotas,
         })
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ExpiryGuardrailsConfig {
+    pub allow_never: bool,
+    pub anonymous_max_file_expiry: Option<String>,
+    pub user_max_file_expiry: Option<String>,
+    pub anonymous_max_paste_expiry: Option<String>,
+    pub user_max_paste_expiry: Option<String>,
+    pub allowed_presets: Vec<String>,
+}
+
+impl Default for ExpiryGuardrailsConfig {
+    fn default() -> Self {
+        Self {
+            allow_never: true,
+            anonymous_max_file_expiry: None,
+            user_max_file_expiry: None,
+            anonymous_max_paste_expiry: None,
+            user_max_paste_expiry: None,
+            allowed_presets: vec![
+                "1h".to_string(),
+                "12h".to_string(),
+                "1d".to_string(),
+                "7d".to_string(),
+                "30d".to_string(),
+            ],
+        }
     }
 }
 
@@ -377,6 +415,8 @@ pub struct SecurityConfig {
     pub secure_cookies: bool,
     pub content_disposition: ContentDispositionMode,
     pub reject_mime_mismatch: bool,
+    pub rate_limit_backend: RateLimitBackend,
+    pub content_policy: ContentPolicyConfig,
     pub url_upload: UrlUploadSecurityConfig,
     pub rate_limits: BTreeMap<String, RateLimitConfig>,
 }
@@ -389,8 +429,40 @@ impl Default for SecurityConfig {
             secure_cookies: false,
             content_disposition: ContentDispositionMode::Inline,
             reject_mime_mismatch: false,
+            rate_limit_backend: RateLimitBackend::Memory,
+            content_policy: ContentPolicyConfig::default(),
             url_upload: UrlUploadSecurityConfig::default(),
             rate_limits: BTreeMap::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RateLimitBackend {
+    Memory,
+    Database,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ContentPolicyConfig {
+    pub allowed_mime_types: Vec<String>,
+    pub forced_attachment_mime_types: Vec<String>,
+    pub max_filename_bytes: usize,
+}
+
+impl Default for ContentPolicyConfig {
+    fn default() -> Self {
+        Self {
+            allowed_mime_types: Vec::new(),
+            forced_attachment_mime_types: vec![
+                "image/svg+xml".to_string(),
+                "text/html".to_string(),
+                "application/javascript".to_string(),
+                "text/javascript".to_string(),
+            ],
+            max_filename_bytes: 180,
         }
     }
 }
@@ -429,6 +501,12 @@ pub enum ContentDispositionMode {
 pub struct UrlUploadSecurityConfig {
     pub block_private_ips: bool,
     pub max_redirects: usize,
+    pub connect_timeout_seconds: u64,
+    pub request_timeout_seconds: u64,
+    pub max_response_bytes: Option<i64>,
+    pub allowed_ports: Vec<u16>,
+    pub blocked_ports: Vec<u16>,
+    pub user_agent: Option<String>,
     pub allowed_hosts: Vec<String>,
     pub blocked_hosts: Vec<String>,
 }
@@ -438,6 +516,12 @@ impl Default for UrlUploadSecurityConfig {
         Self {
             block_private_ips: true,
             max_redirects: 3,
+            connect_timeout_seconds: 10,
+            request_timeout_seconds: 60,
+            max_response_bytes: None,
+            allowed_ports: Vec::new(),
+            blocked_ports: Vec::new(),
+            user_agent: Some("Midden URL upload".to_string()),
             allowed_hosts: Vec::new(),
             blocked_hosts: Vec::new(),
         }
@@ -499,12 +583,26 @@ impl Default for ScanningConfig {
     }
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ProcessingConfig {
     pub metadata_extraction: bool,
     pub metadata_stripping: bool,
     pub thumbnails: bool,
+    pub thumbnail_max_dimension: u32,
+    pub thumbnail_jpeg_quality: u8,
+}
+
+impl Default for ProcessingConfig {
+    fn default() -> Self {
+        Self {
+            metadata_extraction: false,
+            metadata_stripping: false,
+            thumbnails: false,
+            thumbnail_max_dimension: 320,
+            thumbnail_jpeg_quality: 82,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -546,6 +644,70 @@ impl Default for JobsConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct UploadsConfig {
+    pub temp_dir: Option<PathBuf>,
+    pub chunk_bytes: usize,
+    pub max_chunk_bytes: usize,
+    pub upload_session_ttl_seconds: i64,
+    pub max_concurrent_anonymous_uploads: Option<u32>,
+}
+
+impl Default for UploadsConfig {
+    fn default() -> Self {
+        Self {
+            temp_dir: None,
+            chunk_bytes: 1024 * 1024,
+            max_chunk_bytes: 8 * 1024 * 1024,
+            upload_session_ttl_seconds: 24 * 60 * 60,
+            max_concurrent_anonymous_uploads: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct MetricsConfig {
+    pub enabled: bool,
+    pub access: MetricsAccessMode,
+    pub bearer_token: Option<String>,
+}
+
+impl Default for MetricsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            access: MetricsAccessMode::Public,
+            bearer_token: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum MetricsAccessMode {
+    #[default]
+    Public,
+    Admin,
+    Token,
+    Loopback,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct TokensConfig {
+    pub default_ttl_seconds: Option<i64>,
+    pub max_ttl_seconds: Option<i64>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ModerationConfig {
+    pub notify_webhook_url: Option<String>,
+    pub notify_webhook_secret: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ScannerAdapterConfig {
     ClamAv { socket: String },
@@ -573,6 +735,10 @@ pub struct RuntimeSettings {
     pub processing: ProcessingConfig,
     pub discovery: DiscoveryConfig,
     pub jobs: JobsConfig,
+    pub uploads: UploadsConfig,
+    pub metrics: MetricsConfig,
+    pub tokens: TokensConfig,
+    pub moderation: ModerationConfig,
 }
 
 impl RuntimeSettings {
@@ -588,6 +754,10 @@ impl RuntimeSettings {
             processing: config.processing.clone(),
             discovery: config.discovery.clone(),
             jobs: config.jobs.clone(),
+            uploads: config.uploads.clone(),
+            metrics: config.metrics.clone(),
+            tokens: config.tokens.clone(),
+            moderation: config.moderation.clone(),
         }
     }
 }

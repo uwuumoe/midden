@@ -62,11 +62,13 @@ pub(super) async fn create_paste(
             syntax: syntax.as_deref(),
             owner_user_id: user.as_ref().map(|u| u.id.as_str()),
             delete_token_hash: delete_hash.as_deref(),
-            expires_at: parse_expiry_or_default(
+            expires_at: parse_expiry_or_default_checked(
+                &settings,
+                user.as_ref(),
+                "paste",
                 form.expires.as_deref(),
                 settings.limits.default_paste_expiry.as_deref(),
-            )
-            .map_err(|err| AppError::BadRequest(format!("invalid expiry: {err}")))?,
+            )?,
             visibility: requested_visibility(&settings, form.visibility.as_deref())?,
         })
         .await?;
@@ -111,6 +113,12 @@ pub(super) async fn show_paste(
             );
         }
     };
+    authorize_item_view(
+        &settings,
+        user.as_ref(),
+        paste.owner_user_id.as_deref(),
+        &paste.visibility,
+    )?;
     let rendered = render_paste_content(&paste.content, paste.syntax.as_deref());
     let can_edit = can_edit_paste(&settings, user.as_ref(), &paste);
     let revision_count = state.db.paste_revision_count(&paste.id).await.unwrap_or(0);
@@ -201,13 +209,22 @@ pub(super) async fn update_paste(
 
 pub(super) async fn raw_paste(
     State(state): State<AppState>,
+    jar: CookieJar,
     Path(id): Path<String>,
 ) -> AppResult<Response> {
+    let settings = state.settings().await?;
+    let user = current_user(&state, &jar).await?;
     let paste = state
         .db
         .paste_by_public_id(&id)
         .await
         .map_err(|_| AppError::NotFound)?;
+    authorize_item_view(
+        &settings,
+        user.as_ref(),
+        paste.owner_user_id.as_deref(),
+        &paste.visibility,
+    )?;
     Ok((
         [(
             header::CONTENT_TYPE,

@@ -31,6 +31,54 @@ pub(super) async fn admin(
     )
 }
 
+pub(super) async fn admin_jobs(
+    State(state): State<AppState>,
+    jar: CookieJar,
+) -> AppResult<Html<String>> {
+    let settings = state.settings().await?;
+    let user = current_user(&state, &jar).await?;
+    if !policy::can_admin(user.as_ref()) {
+        return Err(AppError::Forbidden);
+    }
+    render(
+        &state,
+        "admin_jobs.html",
+        &settings,
+        user.as_ref(),
+        serde_json::json!({ "summary": null }),
+    )
+}
+
+pub(super) async fn admin_jobs_run_once(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    axum::Form(form): axum::Form<CsrfForm>,
+) -> AppResult<Html<String>> {
+    let settings = state.settings().await?;
+    let user = current_user(&state, &jar).await?;
+    if !policy::can_admin(user.as_ref()) {
+        return Err(AppError::Forbidden);
+    }
+    validate_csrf(&jar, form.csrf_token.as_deref())?;
+    let summary = crate::jobs::run_once(&state, &settings).await?;
+    state
+        .db
+        .audit(
+            user.as_ref().map(|user| user.id.as_str()),
+            "jobs.run_once",
+            "jobs",
+            "admin UI",
+        )
+        .await?;
+    render(
+        &state,
+        "admin_jobs.html",
+        &settings,
+        user.as_ref(),
+        serde_json::json!({ "summary": summary }),
+    )
+}
+
 #[derive(Debug, Deserialize)]
 pub(super) struct AdminSearchQuery {
     pub(super) q: Option<String>,
@@ -444,8 +492,38 @@ pub(super) struct AdminSettingsForm {
     jobs_metadata_limit: Option<String>,
     jobs_scanner_retry_limit: Option<String>,
     jobs_storage_verify_interval_seconds: Option<String>,
+    upload_temp_dir: Option<String>,
+    upload_chunk_bytes: Option<String>,
+    upload_max_chunk_bytes: Option<String>,
+    upload_session_ttl_seconds: Option<String>,
+    upload_max_concurrent_anonymous: Option<String>,
+    metrics_enabled: Option<String>,
+    metrics_access: String,
+    metrics_bearer_token: Option<String>,
+    rate_limit_backend: String,
+    forced_attachment_mime_types: Option<String>,
+    allowed_mime_types: Option<String>,
+    max_filename_bytes: Option<String>,
+    expiry_allow_never: Option<String>,
+    anonymous_max_file_expiry: Option<String>,
+    user_max_file_expiry: Option<String>,
+    anonymous_max_paste_expiry: Option<String>,
+    user_max_paste_expiry: Option<String>,
+    expiry_allowed_presets: Option<String>,
+    token_default_ttl_seconds: Option<String>,
+    token_max_ttl_seconds: Option<String>,
+    thumbnail_max_dimension: Option<String>,
+    thumbnail_jpeg_quality: Option<String>,
+    moderation_notify_webhook_url: Option<String>,
+    moderation_notify_webhook_secret: Option<String>,
     url_block_private_ips: Option<String>,
     url_max_redirects: Option<String>,
+    url_connect_timeout_seconds: Option<String>,
+    url_request_timeout_seconds: Option<String>,
+    url_max_response_bytes: Option<String>,
+    url_allowed_ports: Option<String>,
+    url_blocked_ports: Option<String>,
+    url_user_agent: Option<String>,
     url_allowed_hosts: Option<String>,
     url_blocked_hosts: Option<String>,
     rl_upload_file_enabled: Option<String>,
@@ -557,9 +635,30 @@ pub(super) async fn admin_update_settings(
         }
     };
     security.reject_mime_mismatch = form.reject_mime_mismatch.is_some();
+    security.rate_limit_backend = parse_rate_limit_backend(&form.rate_limit_backend)?;
+    security.content_policy.allowed_mime_types = lines(form.allowed_mime_types.as_deref());
+    security.content_policy.forced_attachment_mime_types =
+        lines(form.forced_attachment_mime_types.as_deref());
+    security.content_policy.max_filename_bytes =
+        parse_optional_usize(form.max_filename_bytes.as_deref())?
+            .unwrap_or(security.content_policy.max_filename_bytes)
+            .max(1);
     security.url_upload.block_private_ips = form.url_block_private_ips.is_some();
     security.url_upload.max_redirects =
         parse_optional_usize(form.url_max_redirects.as_deref())?.unwrap_or(3);
+    security.url_upload.connect_timeout_seconds =
+        parse_optional_u64(form.url_connect_timeout_seconds.as_deref())?
+            .unwrap_or(security.url_upload.connect_timeout_seconds)
+            .max(1);
+    security.url_upload.request_timeout_seconds =
+        parse_optional_u64(form.url_request_timeout_seconds.as_deref())?
+            .unwrap_or(security.url_upload.request_timeout_seconds)
+            .max(1);
+    security.url_upload.max_response_bytes =
+        parse_optional_i64(form.url_max_response_bytes.as_deref())?;
+    security.url_upload.allowed_ports = parse_u16_lines(form.url_allowed_ports.as_deref())?;
+    security.url_upload.blocked_ports = parse_u16_lines(form.url_blocked_ports.as_deref())?;
+    security.url_upload.user_agent = nonempty(form.url_user_agent.as_deref());
     security.url_upload.allowed_hosts = lines(form.url_allowed_hosts.as_deref());
     security.url_upload.blocked_hosts = lines(form.url_blocked_hosts.as_deref());
     apply_rate_limit_form(
@@ -628,6 +727,13 @@ pub(super) async fn admin_update_settings(
     processing.metadata_extraction = form.processing_metadata_extraction.is_some();
     processing.metadata_stripping = form.processing_metadata_stripping.is_some();
     processing.thumbnails = form.processing_thumbnails.is_some();
+    processing.thumbnail_max_dimension =
+        parse_optional_u32(form.thumbnail_max_dimension.as_deref())?
+            .unwrap_or(processing.thumbnail_max_dimension)
+            .max(1);
+    processing.thumbnail_jpeg_quality = parse_optional_u8(form.thumbnail_jpeg_quality.as_deref())?
+        .unwrap_or(processing.thumbnail_jpeg_quality)
+        .clamp(1, 100);
 
     let mut discovery = settings.discovery.clone();
     discovery.robots_index = form.discovery_robots_index.is_some();
@@ -650,6 +756,58 @@ pub(super) async fn admin_update_settings(
         parse_optional_u64(form.jobs_storage_verify_interval_seconds.as_deref())?
             .unwrap_or(jobs.storage_verify_interval_seconds)
             .max(60);
+
+    let mut uploads = settings.uploads.clone();
+    uploads.temp_dir = nonempty(form.upload_temp_dir.as_deref()).map(PathBuf::from);
+    uploads.chunk_bytes = parse_optional_usize(form.upload_chunk_bytes.as_deref())?
+        .unwrap_or(uploads.chunk_bytes)
+        .max(1);
+    uploads.max_chunk_bytes = parse_optional_usize(form.upload_max_chunk_bytes.as_deref())?
+        .unwrap_or(uploads.max_chunk_bytes)
+        .max(uploads.chunk_bytes);
+    uploads.upload_session_ttl_seconds =
+        parse_optional_i64(form.upload_session_ttl_seconds.as_deref())?
+            .unwrap_or(uploads.upload_session_ttl_seconds)
+            .max(60);
+    uploads.max_concurrent_anonymous_uploads =
+        parse_optional_u32(form.upload_max_concurrent_anonymous.as_deref())?;
+
+    let mut metrics = settings.metrics.clone();
+    metrics.enabled = form.metrics_enabled.is_some();
+    metrics.access = parse_metrics_access(&form.metrics_access)?;
+    metrics.bearer_token = nonempty(form.metrics_bearer_token.as_deref());
+    if matches!(metrics.access, crate::config::MetricsAccessMode::Token)
+        && metrics.bearer_token.is_none()
+    {
+        return Err(AppError::BadRequest(
+            "token-protected metrics require a bearer token".to_string(),
+        ));
+    }
+
+    let mut tokens = settings.tokens.clone();
+    tokens.default_ttl_seconds = parse_optional_i64(form.token_default_ttl_seconds.as_deref())?;
+    tokens.max_ttl_seconds = parse_optional_i64(form.token_max_ttl_seconds.as_deref())?;
+    if let (Some(default), Some(max)) = (tokens.default_ttl_seconds, tokens.max_ttl_seconds)
+        && default > max
+    {
+        return Err(AppError::BadRequest(
+            "default token TTL cannot exceed max token TTL".to_string(),
+        ));
+    }
+
+    let mut moderation = settings.moderation.clone();
+    moderation.notify_webhook_url = nonempty(form.moderation_notify_webhook_url.as_deref());
+    moderation.notify_webhook_secret = nonempty(form.moderation_notify_webhook_secret.as_deref());
+
+    limits.expiry.allow_never = form.expiry_allow_never.is_some();
+    limits.expiry.anonymous_max_file_expiry = nonempty(form.anonymous_max_file_expiry.as_deref());
+    limits.expiry.user_max_file_expiry = nonempty(form.user_max_file_expiry.as_deref());
+    limits.expiry.anonymous_max_paste_expiry = nonempty(form.anonymous_max_paste_expiry.as_deref());
+    limits.expiry.user_max_paste_expiry = nonempty(form.user_max_paste_expiry.as_deref());
+    let presets = lines(form.expiry_allowed_presets.as_deref());
+    if !presets.is_empty() {
+        limits.expiry.allowed_presets = presets;
+    }
 
     let mut branding = settings.branding.clone();
     branding.instance_name = form.instance_name.trim().to_string();
@@ -689,6 +847,10 @@ pub(super) async fn admin_update_settings(
     state.db.set_json_setting("processing", &processing).await?;
     state.db.set_json_setting("discovery", &discovery).await?;
     state.db.set_json_setting("jobs", &jobs).await?;
+    state.db.set_json_setting("uploads", &uploads).await?;
+    state.db.set_json_setting("metrics", &metrics).await?;
+    state.db.set_json_setting("tokens", &tokens).await?;
+    state.db.set_json_setting("moderation", &moderation).await?;
     state
         .db
         .audit(
@@ -1308,6 +1470,15 @@ fn parse_optional_u64(value: Option<&str>) -> AppResult<Option<u64>> {
     })?))
 }
 
+fn parse_optional_u8(value: Option<&str>) -> AppResult<Option<u8>> {
+    let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(None);
+    };
+    Ok(Some(value.parse::<u8>().map_err(|err| {
+        AppError::BadRequest(format!("invalid integer: {err}"))
+    })?))
+}
+
 fn nonempty(value: Option<&str>) -> Option<String> {
     value
         .map(str::trim)
@@ -1325,11 +1496,41 @@ fn lines(value: Option<&str>) -> Vec<String> {
         .collect()
 }
 
+fn parse_u16_lines(value: Option<&str>) -> AppResult<Vec<u16>> {
+    lines(value)
+        .into_iter()
+        .map(|line| {
+            line.parse::<u16>()
+                .map_err(|err| AppError::BadRequest(format!("invalid port {line}: {err}")))
+        })
+        .collect()
+}
+
 fn quota_is_empty(quota: &crate::config::QuotaConfig) -> bool {
     quota.storage_bytes.is_none()
         && quota.daily_upload_bytes.is_none()
         && quota.monthly_upload_bytes.is_none()
         && quota.item_count.is_none()
+}
+
+fn parse_rate_limit_backend(value: &str) -> AppResult<crate::config::RateLimitBackend> {
+    match value {
+        "memory" => Ok(crate::config::RateLimitBackend::Memory),
+        "database" => Ok(crate::config::RateLimitBackend::Database),
+        _ => Err(AppError::BadRequest(
+            "invalid rate limit backend".to_string(),
+        )),
+    }
+}
+
+fn parse_metrics_access(value: &str) -> AppResult<crate::config::MetricsAccessMode> {
+    match value {
+        "public" => Ok(crate::config::MetricsAccessMode::Public),
+        "admin" => Ok(crate::config::MetricsAccessMode::Admin),
+        "token" => Ok(crate::config::MetricsAccessMode::Token),
+        "loopback" => Ok(crate::config::MetricsAccessMode::Loopback),
+        _ => Err(AppError::BadRequest("invalid metrics access".to_string())),
+    }
 }
 
 fn parse_signup_mode(value: &str) -> AppResult<SignupMode> {

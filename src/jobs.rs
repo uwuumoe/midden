@@ -1,5 +1,7 @@
 use std::{collections::BTreeSet, time::Duration};
 
+use serde::Serialize;
+
 use crate::{
     app::AppState,
     config::{RuntimeSettings, ScanDecision},
@@ -8,7 +10,7 @@ use crate::{
     util,
 };
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize)]
 pub struct JobSummary {
     pub expired_files: u64,
     pub expired_pastes: u64,
@@ -182,6 +184,7 @@ async fn process_file_metadata(
             .unwrap_or("application/octet-stream");
         let mut metadata_json = file.metadata_json.clone();
         let mut thumbnail_hash = file.thumbnail_hash.clone();
+        let mut bytes_cache = None;
 
         if settings.processing.metadata_extraction && metadata_json.is_none() {
             let bytes = state.storage.get_blob(&file.blob_hash).await?;
@@ -195,10 +198,29 @@ async fn process_file_metadata(
                 dimensions,
                 false,
             )?);
+            bytes_cache = Some(bytes);
         }
 
         if settings.processing.thumbnails && thumbnail_hash.is_none() {
-            thumbnail_hash = processing::thumbnail_hash(content_type, &file.blob_hash);
+            let bytes = match bytes_cache.take() {
+                Some(bytes) => bytes,
+                None => state.storage.get_blob(&file.blob_hash).await?,
+            };
+            if let Some(thumbnail) = processing::thumbnail_derivative(
+                content_type,
+                &bytes,
+                settings.processing.thumbnail_max_dimension,
+            ) {
+                let hash = util::sha256_hex_bytes(&thumbnail);
+                state
+                    .db
+                    .create_blob_if_missing(&hash, thumbnail.len() as i64, Some("image/png"))
+                    .await?;
+                if !state.storage.exists(&hash).await? {
+                    state.storage.put_blob(&hash, thumbnail).await?;
+                }
+                thumbnail_hash = Some(hash);
+            }
         }
 
         if metadata_json != file.metadata_json || thumbnail_hash != file.thumbnail_hash {

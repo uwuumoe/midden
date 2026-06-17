@@ -35,7 +35,51 @@ pub(super) async fn readyz(State(state): State<AppState>) -> Response {
     }
 }
 
-pub(super) async fn metrics(State(state): State<AppState>) -> AppResult<Response> {
+pub(super) async fn metrics(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    headers: HeaderMap,
+) -> AppResult<Response> {
+    let settings = state.settings().await?;
+    if !settings.metrics.enabled {
+        return Err(AppError::NotFound);
+    }
+    match settings.metrics.access {
+        crate::config::MetricsAccessMode::Public => {}
+        crate::config::MetricsAccessMode::Admin => {
+            let user = current_user(&state, &jar).await?;
+            if !policy::can_admin(user.as_ref()) {
+                return Err(AppError::Forbidden);
+            }
+        }
+        crate::config::MetricsAccessMode::Token => {
+            let expected = settings
+                .metrics
+                .bearer_token
+                .as_deref()
+                .filter(|token| !token.is_empty())
+                .ok_or(AppError::Forbidden)?;
+            let provided = headers
+                .get(header::AUTHORIZATION)
+                .and_then(|value| value.to_str().ok())
+                .and_then(|value| value.strip_prefix("Bearer "));
+            if provided != Some(expected) {
+                return Err(AppError::Forbidden);
+            }
+        }
+        crate::config::MetricsAccessMode::Loopback => {
+            let ip = headers
+                .get("x-real-ip")
+                .or_else(|| headers.get("x-forwarded-for"))
+                .and_then(|value| value.to_str().ok())
+                .and_then(|value| value.split(',').next())
+                .map(str::trim)
+                .filter(|value| !value.is_empty());
+            if ip.is_some_and(|ip| ip != "127.0.0.1" && ip != "::1") {
+                return Err(AppError::Forbidden);
+            }
+        }
+    }
     let mut body = String::new();
     encode(&mut body, &state.registry)
         .map_err(|err| AppError::Other(anyhow::anyhow!("metrics encode failed: {err}")))?;

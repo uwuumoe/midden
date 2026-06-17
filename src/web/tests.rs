@@ -1,4 +1,5 @@
 use super::*;
+use crate::jobs;
 use axum::body::Body;
 use http::Request;
 use std::sync::Arc;
@@ -103,7 +104,7 @@ async fn user_with_api_token(
         .collect::<Vec<_>>();
     state
         .db
-        .create_api_token(&user.id, "test", &util::hash_token(&token), &scopes)
+        .create_api_token_with_expiry(&user.id, "test", &util::hash_token(&token), &scopes, None)
         .await
         .unwrap();
     (user, token)
@@ -347,6 +348,35 @@ async fn admin_settings_renders_without_user_role_quota() {
 }
 
 #[tokio::test]
+async fn admin_settings_renders_operator_controls() {
+    let (state, session_token) = admin_session_state().await;
+    let response = state
+        .router()
+        .oneshot(
+            Request::builder()
+                .uri("/admin")
+                .header(header::COOKIE, format!("midden_session={session_token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response_body(response).await;
+    assert!(body.contains("View access"));
+    assert!(body.contains("name=\"expiry_allow_never\""));
+    assert!(body.contains("name=\"upload_session_ttl_seconds\""));
+    assert!(body.contains("name=\"metrics_access\""));
+    assert!(body.contains("name=\"rate_limit_backend\""));
+    assert!(body.contains("name=\"url_request_timeout_seconds\""));
+    assert!(body.contains("name=\"forced_attachment_mime_types\""));
+    assert!(body.contains("name=\"token_default_ttl_seconds\""));
+    assert!(body.contains("name=\"thumbnail_max_dimension\""));
+    assert!(body.contains("name=\"moderation_notify_webhook_url\""));
+}
+
+#[tokio::test]
 async fn index_page_exposes_selected_file_status() {
     let issuer = spawn_oidc_provider(serde_json::json!({
         "sub": "unused-selected-file",
@@ -374,6 +404,102 @@ async fn index_page_exposes_selected_file_status() {
     .unwrap();
     assert!(body.contains("data-selected-file"));
     assert!(body.contains("No file selected"));
+}
+
+#[tokio::test]
+async fn item_view_policy_and_retention_guardrails() {
+    let issuer = spawn_oidc_provider(serde_json::json!({
+        "sub": "unused-access",
+        "email": "unused-access@example.test",
+        "groups": ["admins"]
+    }))
+    .await;
+    let state = test_state(issuer).await;
+    let base = spawn_http_app(state.clone()).await;
+    let client = reqwest::Client::new();
+
+    let mut policy = state.settings().await.unwrap().policy;
+    policy.view_item = ActionRule::Authenticated;
+    state.db.set_json_setting("policy", &policy).await.unwrap();
+
+    let upload = client
+        .post(format!("{base}/api/v1/files"))
+        .multipart(
+            reqwest::multipart::Form::new().part(
+                "file",
+                reqwest::multipart::Part::bytes(b"authenticated viewers only".to_vec())
+                    .file_name("private-ish.txt")
+                    .mime_str("text/plain")
+                    .unwrap(),
+            ),
+        )
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(upload.status(), StatusCode::OK);
+    let upload: serde_json::Value = upload.json().await.unwrap();
+    let file_id = upload["id"].as_str().unwrap();
+
+    assert_eq!(
+        client
+            .get(format!("{base}/files/{file_id}/raw"))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::FORBIDDEN
+    );
+
+    let viewer = state
+        .db
+        .create_user(
+            "viewer@example.test",
+            "viewer",
+            Some("password-hash"),
+            Role::User,
+        )
+        .await
+        .unwrap();
+    let session_token = util::secret_token();
+    state
+        .db
+        .create_session(
+            &viewer.id,
+            &util::hash_token(&session_token),
+            util::now_ts() + 60,
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        client
+            .get(format!("{base}/files/{file_id}/raw"))
+            .header(header::COOKIE, format!("midden_session={session_token}"))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::OK
+    );
+
+    let mut limits = state.settings().await.unwrap().limits;
+    limits.expiry.allow_never = false;
+    limits.expiry.anonymous_max_file_expiry = Some("1h".to_string());
+    state.db.set_json_setting("limits", &limits).await.unwrap();
+    let too_long = client
+        .post(format!("{base}/api/v1/files"))
+        .multipart(
+            reqwest::multipart::Form::new().text("expires", "2h").part(
+                "file",
+                reqwest::multipart::Part::bytes(b"too long".to_vec())
+                    .file_name("too-long.txt")
+                    .mime_str("text/plain")
+                    .unwrap(),
+            ),
+        )
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(too_long.status(), StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]
@@ -416,6 +542,120 @@ async fn browser_upload_result_keeps_uploaded_file_as_links() {
     assert!(body.contains("Raw file"));
     assert!(!body.contains("class=\"file-preview-media\""));
     assert!(!body.contains("alt=\"sample.png\""));
+}
+
+#[tokio::test]
+async fn operational_controls_cover_upload_mime_metrics_and_rate_limits() {
+    let issuer = spawn_oidc_provider(serde_json::json!({
+        "sub": "unused-ops",
+        "email": "unused-ops@example.test",
+        "groups": ["admins"]
+    }))
+    .await;
+    let state = test_state(issuer).await;
+    let mut settings = state.settings().await.unwrap();
+    settings.uploads.max_chunk_bytes = 4;
+    settings.metrics.access = crate::config::MetricsAccessMode::Admin;
+    settings
+        .security
+        .content_policy
+        .forced_attachment_mime_types = vec!["text/plain".to_string()];
+    settings.security.rate_limit_backend = crate::config::RateLimitBackend::Database;
+    state
+        .db
+        .set_json_setting("uploads", &settings.uploads)
+        .await
+        .unwrap();
+    state
+        .db
+        .set_json_setting("metrics", &settings.metrics)
+        .await
+        .unwrap();
+    state
+        .db
+        .set_json_setting("security", &settings.security)
+        .await
+        .unwrap();
+
+    let base = spawn_http_app(state.clone()).await;
+    let client = reqwest::Client::new();
+
+    let create = client
+        .post(format!("{base}/tus"))
+        .header("Tus-Resumable", "1.0.0")
+        .header("Upload-Length", "8")
+        .header("Upload-Metadata", tus_metadata("chunk.txt", "text/plain"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(create.status(), StatusCode::CREATED);
+    let location = create.headers()["location"].to_str().unwrap();
+    let too_large_chunk = client
+        .patch(format!("{base}{location}"))
+        .header("Tus-Resumable", "1.0.0")
+        .header("Upload-Offset", "0")
+        .body("12345")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(too_large_chunk.status(), StatusCode::PAYLOAD_TOO_LARGE);
+
+    assert_eq!(
+        client
+            .get(format!("{base}/metrics"))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::FORBIDDEN
+    );
+    let (admin_state, session_token) = admin_session_state().await;
+    admin_state
+        .db
+        .set_json_setting("metrics", &settings.metrics)
+        .await
+        .unwrap();
+    let admin_base = spawn_http_app(admin_state).await;
+    assert_eq!(
+        client
+            .get(format!("{admin_base}/metrics"))
+            .header(header::COOKIE, format!("midden_session={session_token}"))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::OK
+    );
+
+    let upload = client
+        .post(format!("{base}/api/v1/files"))
+        .multipart(
+            reqwest::multipart::Form::new().part(
+                "file",
+                reqwest::multipart::Part::bytes(b"download me".to_vec())
+                    .file_name("download.txt")
+                    .mime_str("text/plain")
+                    .unwrap(),
+            ),
+        )
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(upload.status(), StatusCode::OK);
+    let upload: serde_json::Value = upload.json().await.unwrap();
+    let file_id = upload["id"].as_str().unwrap();
+    let raw = client
+        .get(format!("{base}/files/{file_id}/raw"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(raw.status(), StatusCode::OK);
+    assert!(
+        raw.headers()[header::CONTENT_DISPOSITION]
+            .to_str()
+            .unwrap()
+            .starts_with("attachment")
+    );
 }
 
 #[tokio::test]
@@ -586,6 +826,112 @@ async fn http_release_flow_covers_upload_paste_claim_reports_admin_search_and_sc
             .unwrap()
             .status(),
         StatusCode::UNAUTHORIZED
+    );
+}
+
+#[tokio::test]
+async fn account_token_jobs_and_thumbnail_surfaces_are_available() {
+    let issuer = spawn_oidc_provider(serde_json::json!({
+        "sub": "unused-surfaces",
+        "email": "unused-surfaces@example.test",
+        "groups": ["admins"]
+    }))
+    .await;
+    let state = test_state(issuer).await;
+    let mut processing = state.settings().await.unwrap().processing;
+    processing.thumbnails = true;
+    processing.thumbnail_max_dimension = 12;
+    state
+        .db
+        .set_json_setting("processing", &processing)
+        .await
+        .unwrap();
+
+    let (admin, admin_token) = user_with_api_token(
+        &state,
+        "surface-admin@example.test",
+        "surface-admin",
+        Role::Admin,
+        &["files:write", "files:read", "tokens:write", "tokens:read"],
+    )
+    .await;
+    let session_token = util::secret_token();
+    state
+        .db
+        .create_session(
+            &admin.id,
+            &util::hash_token(&session_token),
+            util::now_ts() + 60,
+        )
+        .await
+        .unwrap();
+    let base = spawn_http_app(state.clone()).await;
+    let client = reqwest::Client::new();
+
+    let account = client
+        .get(format!("{base}/account"))
+        .header(header::COOKIE, format!("midden_session={session_token}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(account.status(), StatusCode::OK);
+    let account = account.text().await.unwrap();
+    assert!(account.contains("name=\"bulk_action\""));
+    assert!(account.contains("name=\"expires_in_seconds\""));
+
+    let jobs = client
+        .get(format!("{base}/admin/jobs"))
+        .header(header::COOKIE, format!("midden_session={session_token}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(jobs.status(), StatusCode::OK);
+    let jobs = jobs.text().await.unwrap();
+    assert!(jobs.contains("Background jobs"));
+    assert!(jobs.contains("Run once"));
+
+    let token = client
+        .post(format!("{base}/api/v1/tokens"))
+        .bearer_auth(&admin_token)
+        .json(&serde_json::json!({
+            "name": "short-lived",
+            "scopes": ["files:read"],
+            "expires_in_seconds": 1
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(token.status(), StatusCode::OK);
+    let token: serde_json::Value = token.json().await.unwrap();
+    assert!(token["expires_at"].as_i64().is_some());
+
+    let png = hex_fixture(include_str!("../../tests/fixtures/sample.png.hex"));
+    let upload = client
+        .post(format!("{base}/api/v1/files"))
+        .bearer_auth(&admin_token)
+        .multipart(
+            reqwest::multipart::Form::new().part(
+                "file",
+                reqwest::multipart::Part::bytes(png)
+                    .file_name("thumb.png")
+                    .mime_str("image/png")
+                    .unwrap(),
+            ),
+        )
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(upload.status(), StatusCode::OK);
+    let upload: serde_json::Value = upload.json().await.unwrap();
+    let file_id = upload["id"].as_str().unwrap().to_string();
+    jobs::run_once(&state, &state.settings().await.unwrap())
+        .await
+        .unwrap();
+    let file = state.db.file_by_public_id(&file_id).await.unwrap();
+    assert!(file.thumbnail_hash.is_some());
+    assert_ne!(
+        file.thumbnail_hash.as_deref(),
+        Some(file.blob_hash.as_str())
     );
 }
 

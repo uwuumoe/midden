@@ -49,6 +49,18 @@ impl Database {
         if let Some(value) = map.get("jobs") {
             settings.jobs = serde_json::from_str(value)?;
         }
+        if let Some(value) = map.get("uploads") {
+            settings.uploads = serde_json::from_str(value)?;
+        }
+        if let Some(value) = map.get("metrics") {
+            settings.metrics = serde_json::from_str(value)?;
+        }
+        if let Some(value) = map.get("tokens") {
+            settings.tokens = serde_json::from_str(value)?;
+        }
+        if let Some(value) = map.get("moderation") {
+            settings.moderation = serde_json::from_str(value)?;
+        }
         Ok(settings)
     }
 

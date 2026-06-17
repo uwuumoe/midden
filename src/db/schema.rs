@@ -29,6 +29,8 @@ CREATE TABLE IF NOT EXISTS api_tokens (
   name TEXT NOT NULL,
   token_hash TEXT NOT NULL UNIQUE,
   scopes_json TEXT NOT NULL,
+  expires_at INTEGER,
+  last_used_at INTEGER,
   revoked_at INTEGER,
   created_at INTEGER NOT NULL
 );
@@ -175,6 +177,11 @@ CREATE TABLE IF NOT EXISTS audit_events (
   target TEXT NOT NULL,
   detail TEXT NOT NULL,
   created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS rate_limit_buckets (
+  key TEXT PRIMARY KEY,
+  window_start INTEGER NOT NULL,
+  count INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS moderation_notes (
   id TEXT PRIMARY KEY,

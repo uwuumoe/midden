@@ -39,11 +39,13 @@ pub(super) async fn tus_create(
     let metadata = parse_tus_metadata(&headers);
     let filename = metadata.get("filename").map(String::as_str);
     let content_type = metadata.get("content_type").map(String::as_str);
-    let expires_at = parse_expiry_or_default(
+    let expires_at = parse_expiry_or_default_checked(
+        &settings,
+        user.as_ref(),
+        "file",
         metadata.get("expires").map(String::as_str),
         settings.limits.default_file_expiry.as_deref(),
-    )
-    .map_err(|err| AppError::BadRequest(format!("invalid expiry: {err}")))?;
+    )?;
     let visibility =
         requested_visibility(&settings, metadata.get("visibility").map(String::as_str))?;
     state
@@ -132,6 +134,9 @@ pub(super) async fn tus_patch(
         .await
         .map_err(|err| AppError::BadRequest(format!("invalid body: {err}")))?
         .to_bytes();
+    if chunk.len() > settings.uploads.max_chunk_bytes {
+        return Err(AppError::PayloadTooLarge);
+    }
     let next_offset = session.received_bytes + chunk.len() as i64;
     if next_offset > session.total_bytes {
         return Err(AppError::PayloadTooLarge);

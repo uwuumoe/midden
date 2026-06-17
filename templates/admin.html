@@ -7,6 +7,7 @@
     <a href="/admin/users">Users</a>
     <a href="/admin/search">Search files and pastes</a>
     <a href="/admin/reports">Reports</a>
+    <a href="/admin/jobs">Jobs</a>
   </nav>
 
   <form method="post" action="/admin/settings" data-admin-settings-form x-data="{ dirty: false, featureApi: {% if settings.features.api %}true{% else %}false{% endif %}, featureReports: {% if settings.features.reports %}true{% else %}false{% endif %}, featureUrlUpload: {% if settings.features.upload_by_url %}true{% else %}false{% endif %}, scanningEnabled: {% if settings.scanning.enabled %}true{% else %}false{% endif %}, signedInternalUrls: {% if settings.delivery.signed_internal_urls %}true{% else %}false{% endif %} }" x-on:input="dirty = true" x-on:change="dirty = true">
@@ -40,6 +41,7 @@
         <option value="admin_created" {% if settings.policy.signup == "admin_created" %}selected{% endif %}>admin created</option>
       </select>
     </label></p>
+    <h4>View access</h4>
     {% for item in [
       ("policy_upload_file", "Upload file", settings.policy.upload_file),
       ("policy_create_paste", "Create paste", settings.policy.create_paste),
@@ -76,6 +78,13 @@
     <p><label>Max paste bytes<br><input type="number" min="1" name="max_paste_bytes" value="{{ settings.limits.max_paste_bytes }}" required></label></p>
     <p><label>Default file expiry<br><input name="default_file_expiry" value="{{ settings.limits.default_file_expiry or "" }}" placeholder="never, 12h, 7d"></label></p>
     <p><label>Default paste expiry<br><input name="default_paste_expiry" value="{{ settings.limits.default_paste_expiry or "" }}" placeholder="never, 12h, 7d"></label></p>
+    <h4>Expiry guardrails</h4>
+    <p><label><input type="checkbox" name="expiry_allow_never" {% if settings.limits.expiry.allow_never %}checked{% endif %}> Allow never-expiring items</label></p>
+    <p><label>Anonymous max file expiry<br><input name="anonymous_max_file_expiry" value="{{ settings.limits.expiry.anonymous_max_file_expiry or "" }}" placeholder="7d"></label></p>
+    <p><label>User max file expiry<br><input name="user_max_file_expiry" value="{{ settings.limits.expiry.user_max_file_expiry or "" }}" placeholder="90d"></label></p>
+    <p><label>Anonymous max paste expiry<br><input name="anonymous_max_paste_expiry" value="{{ settings.limits.expiry.anonymous_max_paste_expiry or "" }}" placeholder="7d"></label></p>
+    <p><label>User max paste expiry<br><input name="user_max_paste_expiry" value="{{ settings.limits.expiry.user_max_paste_expiry or "" }}" placeholder="90d"></label></p>
+    <p><label>Allowed expiry presets, one per line<br><textarea name="expiry_allowed_presets" rows="4">{{ settings.limits.expiry.allowed_presets | join("\n") }}</textarea></label></p>
     <h4>Anonymous quota</h4>
     <p><label>Storage bytes<br><input type="number" min="1" name="anonymous_storage_bytes" value="{{ settings.limits.anonymous_quota.storage_bytes or "" }}"></label></p>
     <p><label>Daily upload bytes<br><input type="number" min="1" name="anonymous_daily_upload_bytes" value="{{ settings.limits.anonymous_quota.daily_upload_bytes or "" }}"></label></p>
@@ -98,10 +107,20 @@
         <option value="attachment" {% if settings.security.content_disposition == "attachment" %}selected{% endif %}>attachment</option>
       </select>
     </label></p>
+    <h4>Content policy</h4>
+    <p><label>Allowed MIME types, one per line<br><textarea name="allowed_mime_types" rows="4">{{ settings.security.content_policy.allowed_mime_types | join("\n") }}</textarea></label></p>
+    <p><label>Forced attachment MIME types, one per line<br><textarea name="forced_attachment_mime_types" rows="4">{{ settings.security.content_policy.forced_attachment_mime_types | join("\n") }}</textarea></label></p>
+    <p><label>Max filename bytes<br><input type="number" min="1" name="max_filename_bytes" value="{{ settings.security.content_policy.max_filename_bytes }}"></label></p>
     <section x-show="featureUrlUpload" x-cloak>
       <h4>URL upload</h4>
       <p><label><input type="checkbox" name="url_block_private_ips" {% if settings.security.url_upload.block_private_ips %}checked{% endif %}> Block private, loopback, and link-local IPs</label></p>
       <p><label>Max redirects<br><input type="number" min="0" name="url_max_redirects" value="{{ settings.security.url_upload.max_redirects }}"></label></p>
+      <p><label>Connect timeout seconds<br><input type="number" min="1" name="url_connect_timeout_seconds" value="{{ settings.security.url_upload.connect_timeout_seconds }}"></label></p>
+      <p><label>Request timeout seconds<br><input type="number" min="1" name="url_request_timeout_seconds" value="{{ settings.security.url_upload.request_timeout_seconds }}"></label></p>
+      <p><label>Max response bytes<br><input type="number" min="1" name="url_max_response_bytes" value="{{ settings.security.url_upload.max_response_bytes or "" }}"></label></p>
+      <p><label>Allowed ports, one per line<br><textarea name="url_allowed_ports" rows="3">{{ settings.security.url_upload.allowed_ports | join("\n") }}</textarea></label></p>
+      <p><label>Blocked ports, one per line<br><textarea name="url_blocked_ports" rows="3">{{ settings.security.url_upload.blocked_ports | join("\n") }}</textarea></label></p>
+      <p><label>User agent<br><input name="url_user_agent" value="{{ settings.security.url_upload.user_agent or "" }}"></label></p>
       <p><label>Allowed hosts, one per line<br><textarea name="url_allowed_hosts" rows="4">{{ settings.security.url_upload.allowed_hosts | join("\n") }}</textarea></label></p>
       <p><label>Blocked hosts, one per line<br><textarea name="url_blocked_hosts" rows="4">{{ settings.security.url_upload.blocked_hosts | join("\n") }}</textarea></label></p>
     </section>
@@ -123,6 +142,8 @@
     <p><label><input type="checkbox" name="processing_metadata_extraction" {% if settings.processing.metadata_extraction %}checked{% endif %}> Extract file metadata</label></p>
     <p><label><input type="checkbox" name="processing_metadata_stripping" {% if settings.processing.metadata_stripping %}checked{% endif %}> Strip supported image metadata on upload</label></p>
     <p><label><input type="checkbox" name="processing_thumbnails" {% if settings.processing.thumbnails %}checked{% endif %}> Generate image thumbnail references</label></p>
+    <p><label>Thumbnail max dimension<br><input type="number" min="1" name="thumbnail_max_dimension" value="{{ settings.processing.thumbnail_max_dimension }}"></label></p>
+    <p><label>Thumbnail JPEG quality<br><input type="number" min="1" max="100" name="thumbnail_jpeg_quality" value="{{ settings.processing.thumbnail_jpeg_quality }}"></label></p>
     </details>
 
     <details class="settings-section" data-settings-section="discovery" open>
@@ -140,8 +161,49 @@
     <p><label>Storage verify interval seconds<br><input type="number" min="60" name="jobs_storage_verify_interval_seconds" value="{{ settings.jobs.storage_verify_interval_seconds }}"></label></p>
     </details>
 
+    <details class="settings-section" data-settings-section="uploads" open>
+      <summary>Uploads</summary>
+    <p><label>Temporary directory<br><input name="upload_temp_dir" value="{{ settings.uploads.temp_dir or "" }}"></label></p>
+    <p><label>Browser chunk bytes<br><input type="number" min="1" name="upload_chunk_bytes" value="{{ settings.uploads.chunk_bytes }}"></label></p>
+    <p><label>Max server chunk bytes<br><input type="number" min="1" name="upload_max_chunk_bytes" value="{{ settings.uploads.max_chunk_bytes }}"></label></p>
+    <p><label>Upload session TTL seconds<br><input type="number" min="60" name="upload_session_ttl_seconds" value="{{ settings.uploads.upload_session_ttl_seconds }}"></label></p>
+    <p><label>Max concurrent anonymous uploads<br><input type="number" min="1" name="upload_max_concurrent_anonymous" value="{{ settings.uploads.max_concurrent_anonymous_uploads or "" }}"></label></p>
+    </details>
+
+    <details class="settings-section" data-settings-section="metrics" open>
+      <summary>Metrics</summary>
+    <p><label><input type="checkbox" name="metrics_enabled" {% if settings.metrics.enabled %}checked{% endif %}> Enable metrics endpoint</label></p>
+    <p><label>Metrics access<br>
+      <select name="metrics_access">
+        <option value="public" {% if settings.metrics.access == "public" %}selected{% endif %}>public</option>
+        <option value="admin" {% if settings.metrics.access == "admin" %}selected{% endif %}>admin</option>
+        <option value="token" {% if settings.metrics.access == "token" %}selected{% endif %}>token</option>
+        <option value="loopback" {% if settings.metrics.access == "loopback" %}selected{% endif %}>loopback</option>
+      </select>
+    </label></p>
+    <p class="secret-field"><label>Metrics bearer token<br><input data-secret-input type="password" name="metrics_bearer_token" value="{{ settings.metrics.bearer_token or "" }}"></label> <button type="button" data-secret-toggle>Show</button></p>
+    </details>
+
+    <details class="settings-section" data-settings-section="tokens" open>
+      <summary>API tokens</summary>
+    <p><label>Default token TTL seconds<br><input type="number" min="1" name="token_default_ttl_seconds" value="{{ settings.tokens.default_ttl_seconds or "" }}"></label></p>
+    <p><label>Max token TTL seconds<br><input type="number" min="1" name="token_max_ttl_seconds" value="{{ settings.tokens.max_ttl_seconds or "" }}"></label></p>
+    </details>
+
+    <details class="settings-section" data-settings-section="moderation-notifications" open>
+      <summary>Moderation notifications</summary>
+    <p><label>Webhook URL<br><input type="url" name="moderation_notify_webhook_url" value="{{ settings.moderation.notify_webhook_url or "" }}"></label></p>
+    <p class="secret-field"><label>Webhook secret<br><input data-secret-input type="password" name="moderation_notify_webhook_secret" value="{{ settings.moderation.notify_webhook_secret or "" }}"></label> <button type="button" data-secret-toggle>Show</button></p>
+    </details>
+
     <details class="settings-section" data-settings-section="rate-limits" open>
       <summary>Rate limits</summary>
+    <p><label>Rate limit backend<br>
+      <select name="rate_limit_backend">
+        <option value="memory" {% if settings.security.rate_limit_backend == "memory" %}selected{% endif %}>memory</option>
+        <option value="database" {% if settings.security.rate_limit_backend == "database" %}selected{% endif %}>database</option>
+      </select>
+    </label></p>
     <table class="table-card">
       <thead><tr><th>Action</th><th>Enabled</th><th>Requests</th><th>Window seconds</th></tr></thead>
       <tbody>

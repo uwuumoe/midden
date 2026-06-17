@@ -46,6 +46,14 @@ max_paste_bytes = 1048576
 # Backward-compatible aggregate anonymous daily quota.
 # anonymous_daily_bytes = 1073741824
 
+[limits.expiry]
+allow_never = true
+# anonymous_max_file_expiry = "7d"
+# user_max_file_expiry = "90d"
+# anonymous_max_paste_expiry = "7d"
+# user_max_paste_expiry = "90d"
+allowed_presets = ["1h", "12h", "1d", "7d", "30d"]
+
 [limits.anonymous_quota]
 # storage_bytes = 10737418240
 # daily_upload_bytes = 1073741824
@@ -100,6 +108,12 @@ session_ttl_seconds = 2592000
 secure_cookies = false
 content_disposition = "inline"
 reject_mime_mismatch = false
+rate_limit_backend = "memory"
+
+[security.content_policy]
+allowed_mime_types = []
+forced_attachment_mime_types = ["image/svg+xml", "text/html", "application/javascript", "text/javascript"]
+max_filename_bytes = 180
 
 [delivery]
 public_cache_seconds = 3600
@@ -112,10 +126,32 @@ internal_url_ttl_seconds = 300
 metadata_extraction = false
 metadata_stripping = false
 thumbnails = false
+thumbnail_max_dimension = 320
+thumbnail_jpeg_quality = 82
 
 [discovery]
 robots_index = false
 page_size = 50
+
+[uploads]
+# temp_dir = "/var/lib/midden/tmp"
+chunk_bytes = 1048576
+max_chunk_bytes = 8388608
+upload_session_ttl_seconds = 86400
+# max_concurrent_anonymous_uploads = 4
+
+[metrics]
+enabled = true
+access = "public"
+# bearer_token = "change-me"
+
+[tokens]
+# default_ttl_seconds = 2592000
+# max_ttl_seconds = 31536000
+
+[moderation]
+# notify_webhook_url = "https://moderation.example.test/midden"
+# notify_webhook_secret = "change-me"
 
 [jobs]
 enabled = true
@@ -127,6 +163,12 @@ storage_verify_interval_seconds = 3600
 [security.url_upload]
 block_private_ips = true
 max_redirects = 3
+connect_timeout_seconds = 10
+request_timeout_seconds = 60
+# max_response_bytes = 2147483648
+allowed_ports = []
+blocked_ports = []
+user_agent = "Midden URL upload"
 allowed_hosts = []
 blocked_hosts = []
 
