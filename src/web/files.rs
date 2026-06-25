@@ -289,14 +289,24 @@ pub(super) async fn internal_raw_file(
 
 async fn serve_file(state: &AppState, file: FileItem) -> AppResult<Response> {
     let settings = state.settings().await?;
-    let bytes = state.storage.get_blob(&file.blob_hash).await?;
+    use futures_util::StreamExt;
+    let stream = state
+        .storage
+        .get_blob_stream(&file.blob_hash)
+        .await?
+        .map(|res| res.map_err(|err| axum::Error::new(err)));
+    let body = axum::body::Body::from_stream(stream);
     let content_type = file
         .content_type
         .as_deref()
         .unwrap_or("application/octet-stream")
         .parse::<HeaderValue>()
         .unwrap_or_else(|_| HeaderValue::from_static("application/octet-stream"));
-    let mut response = bytes.into_response();
+    let mut response = body.into_response();
+    response.headers_mut().insert(
+        header::CONTENT_LENGTH,
+        HeaderValue::from(file.size_bytes.max(0) as u64),
+    );
     response
         .headers_mut()
         .insert(header::CONTENT_TYPE, content_type);

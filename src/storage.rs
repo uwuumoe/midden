@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use bytes::Bytes;
+use futures_util::stream::BoxStream;
 use futures_util::StreamExt;
 use object_store::{
     ObjectStore, ObjectStoreExt, aws::AmazonS3Builder, local::LocalFileSystem,
@@ -75,6 +76,15 @@ impl BlobStorage {
             .await?
             .bytes()
             .await?)
+    }
+
+    pub async fn get_blob_stream(
+        &self,
+        hash: &str,
+    ) -> anyhow::Result<BoxStream<'static, object_store::Result<Bytes>>> {
+        let path = self.object_path(hash);
+        let get_result = self.store.get(&path).await?;
+        Ok(get_result.into_stream())
     }
 
     pub async fn delete_blob(&self, hash: &str) -> anyhow::Result<()> {
