@@ -62,6 +62,10 @@ enum Command {
         #[command(subcommand)]
         command: JobCommand,
     },
+    User {
+        #[command(subcommand)]
+        command: UserCommand,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -108,6 +112,16 @@ enum JobCommand {
     RunOnce,
 }
 
+#[derive(Debug, Subcommand)]
+enum UserCommand {
+    SetRole {
+        #[arg(long)]
+        email: String,
+        #[arg(long)]
+        role: String,
+    },
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     init_tracing();
@@ -136,6 +150,7 @@ async fn main() -> anyhow::Result<()> {
         Command::Owner { command } => owner_command(config, command).await,
         Command::Storage { command } => storage_command(config, command).await,
         Command::Jobs { command } => jobs_command(config, command).await,
+        Command::User { command } => user_command(config, command).await,
     }
 }
 
@@ -432,4 +447,18 @@ async fn shutdown_signal() {
 
 fn toml_example(config: &AppConfig) -> anyhow::Result<String> {
     Ok(toml::to_string_pretty(config)?)
+}
+
+async fn user_command(config: AppConfig, command: UserCommand) -> anyhow::Result<()> {
+    let db = Database::connect(&config).await?;
+    db.migrate().await?;
+    match command {
+        UserCommand::SetRole { email, role } => {
+            let user = db.user_by_email(&email).await?;
+            let parsed_role = db::Role::parse_form(&role)?;
+            db.set_user_role(&user.id, parsed_role).await?;
+            println!("user role updated: {} is now {}", email, parsed_role.as_str());
+        }
+    }
+    Ok(())
 }
