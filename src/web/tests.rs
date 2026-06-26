@@ -1314,3 +1314,31 @@ async fn oidc_callback_requires_explicit_link_for_existing_local_user() {
             .is_none()
     );
 }
+
+#[tokio::test]
+async fn base_template_renders_custom_expiry_presets() {
+    let issuer = spawn_oidc_provider(serde_json::json!({
+        "sub": "unused-presets",
+        "email": "unused-presets@example.test",
+        "groups": ["admins"]
+    }))
+    .await;
+    let state = test_state(issuer).await;
+    let mut settings = state.settings().await.unwrap();
+    settings.limits.expiry.allowed_presets = vec!["3h".to_string(), "9d".to_string()];
+    settings.limits.expiry.allow_never = false;
+    state.db.set_json_setting("limits", &settings.limits).await.unwrap();
+
+    let response = state
+        .router()
+        .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response_body(response).await;
+    assert!(!body.contains("<option value=\"never\">"));
+    assert!(body.contains("<option value=\"3h\">"));
+    assert!(body.contains("<option value=\"9d\">"));
+}
+

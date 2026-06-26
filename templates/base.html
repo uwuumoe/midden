@@ -63,12 +63,12 @@
     </footer>
   </div>
   <datalist id="expiry-presets">
-    <option value="never"></option>
-    <option value="1h"></option>
-    <option value="12h"></option>
-    <option value="1d"></option>
-    <option value="7d"></option>
-    <option value="30d"></option>
+    {% if settings.limits.expiry.allow_never %}
+      <option value="never"></option>
+    {% endif %}
+    {% for preset in settings.limits.expiry.allowed_presets %}
+      <option value="{{ preset }}"></option>
+    {% endfor %}
   </datalist>
   <script defer src="/static/vendor/htmx.min.js"></script>
   <script defer src="/static/vendor/alpine.min.js"></script>
