@@ -352,3 +352,30 @@ pub(super) fn normalize_syntax(input: Option<&str>) -> Option<String> {
         .to_string(),
     )
 }
+
+pub(super) async fn trigger_moderation_webhook(
+    settings: &RuntimeSettings,
+    kind: &str,
+    id: &str,
+    reporter_user_id: Option<&str>,
+    reason: &str,
+    details: &str,
+) -> anyhow::Result<()> {
+    let Some(url) = settings.moderation.notify_webhook_url.as_deref().filter(|url| !url.is_empty()) else {
+        return Ok(());
+    };
+    let client = reqwest::Client::new();
+    let mut request = client.post(url).json(&serde_json::json!({
+        "kind": kind,
+        "id": id,
+        "reporter_user_id": reporter_user_id,
+        "reason": reason,
+        "details": details,
+    }));
+    if let Some(secret) = settings.moderation.notify_webhook_secret.as_deref().filter(|secret| !secret.is_empty()) {
+        request = request.header("x-midden-moderation-secret", secret);
+    }
+    request.send().await?.error_for_status()?;
+    Ok(())
+}
+

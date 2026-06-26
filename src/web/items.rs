@@ -68,6 +68,20 @@ pub(super) async fn create_report(
         )
         .await?;
     state.metrics.reports.inc();
+
+    if let Err(err) = trigger_moderation_webhook(
+        &settings,
+        &kind,
+        &id,
+        user.as_ref().map(|u| u.id.as_str()),
+        &form.reason,
+        form.details.as_deref().unwrap_or(""),
+    )
+    .await
+    {
+        tracing::error!(error = %err, "failed to trigger moderation webhook");
+    }
+
     if let Some(abuse_email) = &settings.branding.abuse_email {
         let _ = state
             .mailer

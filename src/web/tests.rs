@@ -1342,3 +1342,61 @@ async fn base_template_renders_custom_expiry_presets() {
     assert!(body.contains("<option value=\"9d\">"));
 }
 
+async fn spawn_webhook_provider() -> (String, tokio::sync::mpsc::Receiver<String>) {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let (tx, rx) = tokio::sync::mpsc::channel(1);
+    tokio::spawn(async move {
+        if let Ok((mut stream, _)) = listener.accept().await {
+            let mut buffer = [0_u8; 4096];
+            if let Ok(read) = stream.read(&mut buffer).await {
+                let request = String::from_utf8_lossy(&buffer[..read]).to_string();
+                let _ = tx.send(request).await;
+                let response = "HTTP/1.1 200 OK\r\ncontent-length: 0\r\nconnection: close\r\n\r\n";
+                let _ = stream.write_all(response.as_bytes()).await;
+            }
+        }
+    });
+    (format!("http://{addr}"), rx)
+}
+
+#[tokio::test]
+async fn moderation_webhook_notifies_external_service() {
+    let issuer = spawn_oidc_provider(serde_json::json!({
+        "sub": "unused-webhook",
+        "email": "unused-webhook@example.test",
+        "groups": ["admins"]
+    }))
+    .await;
+    let state = test_state(issuer).await;
+    let (webhook_url, mut rx) = spawn_webhook_provider().await;
+    let mut settings = state.settings().await.unwrap();
+    settings.moderation.notify_webhook_url = Some(webhook_url);
+    settings.moderation.notify_webhook_secret = Some("my-secret".to_string());
+    state.db.set_json_setting("moderation", &settings.moderation).await.unwrap();
+
+    let base = spawn_http_app(state.clone()).await;
+    let client = reqwest::Client::new();
+    
+    let response = client
+        .post(format!("{base}/api/v1/reports"))
+        .json(&serde_json::json!({
+            "kind": "file",
+            "id": "file-123",
+            "reason": "abuse",
+            "details": "webhook test"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let request_str = rx.recv().await.expect("webhook not received");
+    assert!(request_str.contains("x-midden-moderation-secret: my-secret"));
+    assert!(request_str.contains("\"kind\":\"file\""));
+    assert!(request_str.contains("\"id\":\"file-123\""));
+    assert!(request_str.contains("\"reason\":\"abuse\""));
+    assert!(request_str.contains("\"details\":\"webhook test\""));
+}
+
+
