@@ -650,7 +650,6 @@ pub struct UploadsConfig {
     pub chunk_bytes: usize,
     pub max_chunk_bytes: usize,
     pub upload_session_ttl_seconds: i64,
-    pub max_concurrent_anonymous_uploads: Option<u32>,
 }
 
 impl Default for UploadsConfig {
@@ -660,7 +659,6 @@ impl Default for UploadsConfig {
             chunk_bytes: 1024 * 1024,
             max_chunk_bytes: 8 * 1024 * 1024,
             upload_session_ttl_seconds: 24 * 60 * 60,
-            max_concurrent_anonymous_uploads: None,
         }
     }
 }

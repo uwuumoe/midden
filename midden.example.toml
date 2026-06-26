@@ -138,7 +138,6 @@ page_size = 50
 chunk_bytes = 1048576
 max_chunk_bytes = 8388608
 upload_session_ttl_seconds = 86400
-# max_concurrent_anonymous_uploads = 4
 
 [metrics]
 enabled = true

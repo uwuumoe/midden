@@ -496,7 +496,6 @@ pub(super) struct AdminSettingsForm {
     upload_chunk_bytes: Option<String>,
     upload_max_chunk_bytes: Option<String>,
     upload_session_ttl_seconds: Option<String>,
-    upload_max_concurrent_anonymous: Option<String>,
     metrics_enabled: Option<String>,
     metrics_access: String,
     metrics_bearer_token: Option<String>,
@@ -769,8 +768,6 @@ pub(super) async fn admin_update_settings(
         parse_optional_i64(form.upload_session_ttl_seconds.as_deref())?
             .unwrap_or(uploads.upload_session_ttl_seconds)
             .max(60);
-    uploads.max_concurrent_anonymous_uploads =
-        parse_optional_u32(form.upload_max_concurrent_anonymous.as_deref())?;
 
     let mut metrics = settings.metrics.clone();
     metrics.enabled = form.metrics_enabled.is_some();

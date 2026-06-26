@@ -173,7 +173,6 @@
     <p><label>Browser chunk bytes<br><input type="number" min="1" name="upload_chunk_bytes" value="{{ settings.uploads.chunk_bytes }}"></label></p>
     <p><label>Max server chunk bytes<br><input type="number" min="1" name="upload_max_chunk_bytes" value="{{ settings.uploads.max_chunk_bytes }}"></label></p>
     <p><label>Upload session TTL seconds<br><input type="number" min="60" name="upload_session_ttl_seconds" value="{{ settings.uploads.upload_session_ttl_seconds }}"></label></p>
-    <p><label>Max concurrent anonymous uploads<br><input type="number" min="1" name="upload_max_concurrent_anonymous" value="{{ settings.uploads.max_concurrent_anonymous_uploads or "" }}"></label></p>
     </details>
 
     <details class="settings-section" data-settings-section="metrics" x-show="activeTab === 'system'" open>
