@@ -7,7 +7,12 @@ pub(super) async fn new_paste(
     let settings = state.settings().await?;
     let user = current_user(&state, &jar).await?;
     if !policy::can_create_paste(&settings, user.as_ref()) {
-        return Err(AppError::Forbidden);
+        let account_required = user.is_none()
+            && settings.policy.create_paste != ActionRule::Anonymous
+            && settings.policy.create_paste != ActionRule::Disabled;
+        if !account_required {
+            return Err(AppError::Forbidden);
+        }
     }
     render(
         &state,
