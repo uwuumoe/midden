@@ -6,6 +6,15 @@ on:
       - main
     tags:
       - 'v*'
+    paths:
+      - .github/workflows/**
+      - Dockerfile
+      - .dockerignore
+      - src/**
+      - static/**
+      - templates/**
+      - Cargo.toml
+      - Cargo.lock
   pull_request:
     branches:
       - main
