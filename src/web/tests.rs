@@ -1540,3 +1540,58 @@ async fn unauthenticated_paste_shows_notice() {
     assert!(body.contains("An account is required to create pastes on this instance."));
     assert!(!body.contains("Create paste"));
 }
+
+#[tokio::test]
+async fn tus_uses_configured_temp_dir() {
+    let issuer = spawn_oidc_provider(serde_json::json!({
+        "sub": "unused-tus-temp-dir",
+        "email": "unused-tus-temp-dir@example.test",
+        "groups": ["admins"]
+    }))
+    .await;
+    let state = test_state(issuer).await;
+    let custom_temp =
+        std::env::temp_dir().join(format!("midden-custom-tus-temp-{}", util::public_id()));
+    let mut settings = state.settings().await.unwrap();
+    settings.uploads.temp_dir = Some(custom_temp.clone());
+    state
+        .db
+        .set_json_setting("uploads", &settings.uploads)
+        .await
+        .unwrap();
+
+    let _ = tokio::fs::remove_dir_all(&custom_temp).await;
+
+    let base = spawn_http_app(state.clone()).await;
+    let client = reqwest::Client::new();
+    let payload = b"tus custom temp".to_vec();
+
+    let create = client
+        .post(format!("{base}/tus"))
+        .header("Tus-Resumable", "1.0.0")
+        .header("Upload-Length", payload.len().to_string())
+        .header(
+            "Upload-Metadata",
+            tus_metadata("tus-custom.txt", "text/plain"),
+        )
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(create.status(), StatusCode::CREATED);
+    let location = create.headers()["location"].to_str().unwrap().to_string();
+
+    let patch = client
+        .patch(format!("{base}{location}"))
+        .header("Tus-Resumable", "1.0.0")
+        .header("Upload-Offset", "0")
+        .body(payload.clone())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(patch.status(), StatusCode::NO_CONTENT);
+
+    // Verify custom temp directory exists and contains files
+    assert!(custom_temp.exists());
+    let _ = tokio::fs::remove_dir_all(&custom_temp).await;
+}
+
