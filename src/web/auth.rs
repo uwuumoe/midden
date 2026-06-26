@@ -30,6 +30,9 @@ pub(super) async fn login(
     axum::Form(form): axum::Form<LoginForm>,
 ) -> AppResult<Response> {
     let settings = state.settings().await?;
+    if !settings.features.local_login {
+        return Err(AppError::Forbidden);
+    }
     validate_csrf(&jar, form.csrf_token.as_deref())?;
     enforce_rate_limit(&state, &settings, "login", &headers, None).await?;
     let user = match state.db.user_by_email(&form.email).await {
@@ -252,6 +255,9 @@ pub(super) async fn password_reset_request_form(
     jar: CookieJar,
 ) -> AppResult<Html<String>> {
     let settings = state.settings().await?;
+    if !settings.features.local_login {
+        return Err(AppError::Forbidden);
+    }
     let user = current_user(&state, &jar).await?;
     render(
         &state,
@@ -275,6 +281,9 @@ pub(super) async fn password_reset_request(
     axum::Form(form): axum::Form<PasswordResetRequestForm>,
 ) -> AppResult<Html<String>> {
     let settings = state.settings().await?;
+    if !settings.features.local_login {
+        return Err(AppError::Forbidden);
+    }
     let user = current_user(&state, &jar).await?;
     validate_csrf(&jar, form.csrf_token.as_deref())?;
     enforce_rate_limit(&state, &settings, "password_reset", &headers, user.as_ref()).await?;
@@ -319,6 +328,9 @@ pub(super) async fn password_reset_form(
     Path(token): Path<String>,
 ) -> AppResult<Html<String>> {
     let settings = state.settings().await?;
+    if !settings.features.local_login {
+        return Err(AppError::Forbidden);
+    }
     let user = current_user(&state, &jar).await?;
     render(
         &state,
@@ -341,6 +353,10 @@ pub(super) async fn password_reset_submit(
     Path(token): Path<String>,
     axum::Form(form): axum::Form<PasswordResetSubmitForm>,
 ) -> AppResult<Response> {
+    let settings = state.settings().await?;
+    if !settings.features.local_login {
+        return Err(AppError::Forbidden);
+    }
     validate_csrf(&jar, form.csrf_token.as_deref())?;
     let reset_user = state
         .db
@@ -405,6 +421,9 @@ pub(super) async fn register_form(
     jar: CookieJar,
 ) -> AppResult<Html<String>> {
     let settings = state.settings().await?;
+    if !settings.features.local_login {
+        return Err(AppError::Forbidden);
+    }
     let user = current_user(&state, &jar).await?;
     if !matches!(
         settings.policy.signup,
@@ -440,6 +459,9 @@ pub(super) async fn register(
     axum::Form(form): axum::Form<RegisterForm>,
 ) -> AppResult<Redirect> {
     let settings = state.settings().await?;
+    if !settings.features.local_login {
+        return Err(AppError::Forbidden);
+    }
     let user = current_user(&state, &jar).await?;
     if !matches!(
         settings.policy.signup,
