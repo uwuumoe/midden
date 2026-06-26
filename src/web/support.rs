@@ -361,7 +361,12 @@ pub(super) async fn trigger_moderation_webhook(
     reason: &str,
     details: &str,
 ) -> anyhow::Result<()> {
-    let Some(url) = settings.moderation.notify_webhook_url.as_deref().filter(|url| !url.is_empty()) else {
+    let Some(url) = settings
+        .moderation
+        .notify_webhook_url
+        .as_deref()
+        .filter(|url| !url.is_empty())
+    else {
         return Ok(());
     };
     let client = reqwest::Client::new();
@@ -372,10 +377,14 @@ pub(super) async fn trigger_moderation_webhook(
         "reason": reason,
         "details": details,
     }));
-    if let Some(secret) = settings.moderation.notify_webhook_secret.as_deref().filter(|secret| !secret.is_empty()) {
+    if let Some(secret) = settings
+        .moderation
+        .notify_webhook_secret
+        .as_deref()
+        .filter(|secret| !secret.is_empty())
+    {
         request = request.header("x-midden-moderation-secret", secret);
     }
     request.send().await?.error_for_status()?;
     Ok(())
 }
-

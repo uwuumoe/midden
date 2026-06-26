@@ -261,7 +261,9 @@ where
 }
 
 fn scanner_temp_path(temp_dir: Option<&Path>, public_id: &str) -> PathBuf {
-    let base = temp_dir.map(Path::to_path_buf).unwrap_or_else(std::env::temp_dir);
+    let base = temp_dir
+        .map(Path::to_path_buf)
+        .unwrap_or_else(std::env::temp_dir);
     base.join(format!("midden-scan-{public_id}-{}", util::public_id()))
 }
 

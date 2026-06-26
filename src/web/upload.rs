@@ -289,7 +289,10 @@ pub(super) async fn read_upload_form(
             )
             .await;
         } else if name == "file" {
-            file = Some(read_upload_field_to_temp(settings.uploads.temp_dir.as_deref(), field, max_bytes).await?);
+            file = Some(
+                read_upload_field_to_temp(settings.uploads.temp_dir.as_deref(), field, max_bytes)
+                    .await?,
+            );
         }
     }
     Ok(UploadFormData {
@@ -328,7 +331,10 @@ async fn read_upload_form_after_csrf(
                     AppError::BadRequest(format!("invalid visibility field: {err}"))
                 })?);
         } else if name == "file" {
-            file = Some(read_upload_field_to_temp(settings.uploads.temp_dir.as_deref(), field, max_bytes).await?);
+            file = Some(
+                read_upload_field_to_temp(settings.uploads.temp_dir.as_deref(), field, max_bytes)
+                    .await?,
+            );
         }
     }
     Ok(UploadFormData {
@@ -346,7 +352,9 @@ async fn read_upload_field_to_temp(
 ) -> AppResult<UploadedBytes> {
     let filename = field.file_name().map(ToOwned::to_owned);
     let content_type = field.content_type().map(ToString::to_string);
-    let base_temp = temp_dir.map(std::path::Path::to_path_buf).unwrap_or_else(std::env::temp_dir);
+    let base_temp = temp_dir
+        .map(std::path::Path::to_path_buf)
+        .unwrap_or_else(std::env::temp_dir);
     tokio::fs::create_dir_all(&base_temp).await?;
     let temp_path = base_temp.join(format!("midden-upload-{}.part", uuid::Uuid::new_v4()));
     let mut temp = tokio::fs::File::create(&temp_path).await?;

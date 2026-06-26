@@ -91,8 +91,9 @@ async fn request_context_middleware(
             tracing::error!(error = %err, "failed to load settings in middleware");
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Html("internal server error".to_string())
-            ).into_response();
+                Html("internal server error".to_string()),
+            )
+                .into_response();
         }
     };
     let current_user = current_user(&state, &jar).await.unwrap_or(None);
@@ -105,9 +106,9 @@ async fn request_context_middleware(
         is_htmx,
     };
 
-    REQUEST_CONTEXT.scope(ctx, async {
-        next.run(request).await
-    }).await
+    REQUEST_CONTEXT
+        .scope(ctx, async { next.run(request).await })
+        .await
 }
 
 pub fn router(state: AppState) -> Router {

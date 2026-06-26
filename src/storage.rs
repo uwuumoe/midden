@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use bytes::Bytes;
-use futures_util::stream::BoxStream;
 use futures_util::StreamExt;
+use futures_util::stream::BoxStream;
 use object_store::{
     ObjectStore, ObjectStoreExt, aws::AmazonS3Builder, local::LocalFileSystem,
     path::Path as ObjectPath,

@@ -1327,7 +1327,11 @@ async fn base_template_renders_custom_expiry_presets() {
     let mut settings = state.settings().await.unwrap();
     settings.limits.expiry.allowed_presets = vec!["3h".to_string(), "9d".to_string()];
     settings.limits.expiry.allow_never = false;
-    state.db.set_json_setting("limits", &settings.limits).await.unwrap();
+    state
+        .db
+        .set_json_setting("limits", &settings.limits)
+        .await
+        .unwrap();
 
     let response = state
         .router()
@@ -1373,11 +1377,15 @@ async fn moderation_webhook_notifies_external_service() {
     let mut settings = state.settings().await.unwrap();
     settings.moderation.notify_webhook_url = Some(webhook_url);
     settings.moderation.notify_webhook_secret = Some("my-secret".to_string());
-    state.db.set_json_setting("moderation", &settings.moderation).await.unwrap();
+    state
+        .db
+        .set_json_setting("moderation", &settings.moderation)
+        .await
+        .unwrap();
 
     let base = spawn_http_app(state.clone()).await;
     let client = reqwest::Client::new();
-    
+
     let response = client
         .post(format!("{base}/api/v1/reports"))
         .json(&serde_json::json!({
@@ -1411,10 +1419,15 @@ async fn uploads_uses_configured_temp_dir() {
     let base = spawn_http_app(state.clone()).await;
     let client = reqwest::Client::new();
 
-    let custom_temp = std::env::temp_dir().join(format!("midden-custom-temp-{}", util::public_id()));
+    let custom_temp =
+        std::env::temp_dir().join(format!("midden-custom-temp-{}", util::public_id()));
     let mut settings = state.settings().await.unwrap();
     settings.uploads.temp_dir = Some(custom_temp.clone());
-    state.db.set_json_setting("uploads", &settings.uploads).await.unwrap();
+    state
+        .db
+        .set_json_setting("uploads", &settings.uploads)
+        .await
+        .unwrap();
 
     let _ = tokio::fs::remove_dir_all(&custom_temp).await;
 
@@ -1447,16 +1460,24 @@ async fn unauthenticated_upload_shows_notice() {
     }))
     .await;
     let state = test_state(issuer).await;
-    
+
     // Set policy to require authenticated users for file uploads and enable upload_by_url
     let mut settings = state.settings().await.unwrap();
     settings.policy.upload_file = ActionRule::Authenticated;
     settings.features.upload_by_url = true;
-    state.db.set_json_setting("policy", &settings.policy).await.unwrap();
-    state.db.set_json_setting("features", &settings.features).await.unwrap();
+    state
+        .db
+        .set_json_setting("policy", &settings.policy)
+        .await
+        .unwrap();
+    state
+        .db
+        .set_json_setting("features", &settings.features)
+        .await
+        .unwrap();
 
     let router = state.router();
-    
+
     // GET / (index page) should return OK but contain the notice and not the form help
     let response = router
         .clone()
@@ -1471,7 +1492,12 @@ async fn unauthenticated_upload_shows_notice() {
 
     // GET /url-upload should return OK but contain the notice and not the fetch form
     let response_url = router
-        .oneshot(Request::builder().uri("/url-upload").body(Body::empty()).unwrap())
+        .oneshot(
+            Request::builder()
+                .uri("/url-upload")
+                .body(Body::empty())
+                .unwrap(),
+        )
         .await
         .unwrap();
 
@@ -1490,17 +1516,22 @@ async fn unauthenticated_paste_shows_notice() {
     }))
     .await;
     let state = test_state(issuer).await;
-    
+
     // Set policy to require authenticated users for paste creation
     let mut policy = state.settings().await.unwrap().policy;
     policy.create_paste = ActionRule::Authenticated;
     state.db.set_json_setting("policy", &policy).await.unwrap();
 
     let router = state.router();
-    
+
     // GET /p/new should return OK (not FORBIDDEN) and contain the notice
     let response = router
-        .oneshot(Request::builder().uri("/p/new").body(Body::empty()).unwrap())
+        .oneshot(
+            Request::builder()
+                .uri("/p/new")
+                .body(Body::empty())
+                .unwrap(),
+        )
         .await
         .unwrap();
 
@@ -1509,6 +1540,3 @@ async fn unauthenticated_paste_shows_notice() {
     assert!(body.contains("An account is required to create pastes on this instance."));
     assert!(!body.contains("Create paste"));
 }
-
-
-
