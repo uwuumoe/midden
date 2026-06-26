@@ -13,7 +13,7 @@ impl Database {
         .bind(session.content_type)
         .bind(session.total_bytes)
         .bind(session.owner_user_id)
-        .bind(format!("data/uploads/{}.part", session.upload_id))
+        .bind(session.temp_path)
         .bind(session.expires_at)
         .bind(session.visibility)
         .bind(util::now_ts())

@@ -10,6 +10,7 @@ pub struct NewUploadSession<'a> {
     pub owner_user_id: Option<&'a str>,
     pub expires_at: Option<i64>,
     pub visibility: &'a str,
+    pub temp_path: &'a str,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
