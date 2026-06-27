@@ -523,14 +523,12 @@ pub(super) async fn persist_file_upload(
             "upload quarantined by scanner".to_string(),
         ));
     }
-    let slug = util::slug_with_extension(&file.public_id, file.extension.as_deref());
-    let base = state.config.server.public_base_url.trim_end_matches('/');
     state.metrics.uploads.inc();
     state.metrics.upload_bytes.inc_by(size_bytes as u64);
     let internal_url = signed_internal_raw_url(state, settings, &file);
     Ok(PersistedUpload {
-        raw_url: format!("{base}/files/{}/raw", file.public_id),
-        url: format!("{base}/{slug}"),
+        raw_url: raw_file_url(state, settings, &file),
+        url: file_url(state, settings, &file),
         internal_url,
         delete_token,
         file,

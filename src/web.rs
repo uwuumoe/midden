@@ -4,7 +4,7 @@ use axum::{
     Router,
     body::Bytes,
     extract::{Multipart, Path, Query, Request, State},
-    http::{HeaderMap, HeaderValue, StatusCode, header},
+    http::{HeaderMap, HeaderName, HeaderValue, StatusCode, header},
     middleware::{self, Next},
     response::{Html, IntoResponse, Redirect, Response},
     routing::{delete, get, options, patch, post},
@@ -23,8 +23,8 @@ use crate::{
     app::{AppError, AppResult, AppState},
     config::{
         ActionRule, ContentDispositionMode, DeletePolicy, FeatureConfig, HomepageBlock,
-        PolicyConfig, RateLimitBackend, RateLimitConfig, RuntimeSettings, ScanDecision,
-        ScannerAdapterConfig, SignupMode,
+        PolicyConfig, RateLimitBackend, RateLimitConfig, RiskyMimeMode, RuntimeSettings,
+        ScanDecision, ScannerAdapterConfig, SignupMode,
     },
     db::{FileItem, NewFileItem, NewPaste, NewUploadSession, Paste, Role, User},
     policy, processing, quota,
@@ -218,6 +218,10 @@ pub fn router(state: AppState) -> Router {
         .layer(middleware::from_fn(api_error_middleware))
         .layer(middleware::from_fn_with_state(
             state.clone(),
+            file_origin_middleware,
+        ))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
             request_context_middleware,
         ))
         .layer(middleware::from_fn_with_state(
@@ -232,12 +236,64 @@ pub fn router(state: AppState) -> Router {
         .with_state(state)
 }
 
-async fn csrf_cookie_middleware(
+async fn file_origin_middleware(
     State(state): State<AppState>,
-    jar: CookieJar,
+    headers: HeaderMap,
     request: Request,
     next: Next,
 ) -> Response {
+    let Ok(settings) = state.settings().await else {
+        return next.run(request).await;
+    };
+    if is_isolated_file_host(&settings, &headers) && !is_public_file_path(request.uri().path()) {
+        return AppError::NotFound.into_response();
+    }
+    next.run(request).await
+}
+
+fn is_public_file_path(path: &str) -> bool {
+    if path.starts_with("/files/") && path.ends_with("/raw") {
+        return true;
+    }
+    let Some(slug) = path.strip_prefix('/') else {
+        return false;
+    };
+    if slug.is_empty()
+        || slug.contains('/')
+        || matches!(
+            slug,
+            "account"
+                | "admin"
+                | "api"
+                | "browse"
+                | "healthz"
+                | "metrics"
+                | "readyz"
+                | "register"
+                | "robots.txt"
+                | "tus"
+                | "url-upload"
+        )
+    {
+        return false;
+    }
+    util::split_slug(slug).is_some()
+}
+
+async fn csrf_cookie_middleware(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    headers: HeaderMap,
+    request: Request,
+    next: Next,
+) -> Response {
+    if state
+        .settings()
+        .await
+        .is_ok_and(|settings| is_isolated_file_host(&settings, &headers))
+    {
+        return next.run(request).await;
+    }
     let needs_cookie = jar.get(CSRF_COOKIE).is_none();
     let mut response = next.run(request).await;
     if needs_cookie {

@@ -451,6 +451,7 @@ pub enum RateLimitBackend {
 pub struct ContentPolicyConfig {
     pub allowed_mime_types: Vec<String>,
     pub forced_attachment_mime_types: Vec<String>,
+    pub risky_mime_mode: RiskyMimeMode,
     pub max_filename_bytes: usize,
 }
 
@@ -464,6 +465,7 @@ impl Default for ContentPolicyConfig {
                 "application/javascript".to_string(),
                 "text/javascript".to_string(),
             ],
+            risky_mime_mode: RiskyMimeMode::Attachment,
             max_filename_bytes: 180,
         }
     }
@@ -474,6 +476,8 @@ impl Default for ContentPolicyConfig {
 pub struct DeliveryConfig {
     pub public_cache_seconds: u64,
     pub static_cache_seconds: u64,
+    pub public_file_base_url: Option<String>,
+    pub isolated_file_origin: bool,
     pub signed_internal_urls: bool,
     pub internal_url_secret: Option<String>,
     pub internal_url_ttl_seconds: i64,
@@ -484,6 +488,8 @@ impl Default for DeliveryConfig {
         Self {
             public_cache_seconds: 3600,
             static_cache_seconds: 31_536_000,
+            public_file_base_url: None,
+            isolated_file_origin: false,
             signed_internal_urls: false,
             internal_url_secret: None,
             internal_url_ttl_seconds: 300,
@@ -496,6 +502,14 @@ impl Default for DeliveryConfig {
 pub enum ContentDispositionMode {
     Inline,
     Attachment,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RiskyMimeMode {
+    Attachment,
+    InlineOnIsolatedOrigin,
+    Plaintext,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

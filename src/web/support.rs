@@ -14,6 +14,74 @@ pub(super) fn insert_cache_control(response: &mut Response, seconds: u64, _scope
     response.headers_mut().insert(header::CACHE_CONTROL, value);
 }
 
+pub(super) fn app_base_url(state: &AppState) -> String {
+    state
+        .config
+        .server
+        .public_base_url
+        .trim_end_matches('/')
+        .to_string()
+}
+
+pub(super) fn file_base_url(state: &AppState, settings: &RuntimeSettings) -> String {
+    settings
+        .delivery
+        .public_file_base_url
+        .as_deref()
+        .filter(|url| !url.trim().is_empty())
+        .unwrap_or(&state.config.server.public_base_url)
+        .trim_end_matches('/')
+        .to_string()
+}
+
+pub(super) fn file_url(state: &AppState, settings: &RuntimeSettings, file: &FileItem) -> String {
+    let slug = util::slug_with_extension(&file.public_id, file.extension.as_deref());
+    format!("{}/{}", file_base_url(state, settings), slug)
+}
+
+pub(super) fn raw_file_url(
+    state: &AppState,
+    settings: &RuntimeSettings,
+    file: &FileItem,
+) -> String {
+    format!(
+        "{}/files/{}/raw",
+        file_base_url(state, settings),
+        file.public_id
+    )
+}
+
+pub(super) fn configured_file_host(settings: &RuntimeSettings) -> Option<String> {
+    let url = settings.delivery.public_file_base_url.as_deref()?;
+    let parsed = url::Url::parse(url).ok()?;
+    let host = parsed.host_str()?.to_ascii_lowercase();
+    match parsed.port() {
+        Some(port) => Some(format!("{host}:{port}")),
+        None => Some(host),
+    }
+}
+
+pub(super) fn request_host(headers: &HeaderMap) -> Option<String> {
+    headers
+        .get(header::HOST)
+        .and_then(|value| value.to_str().ok())
+        .map(|value| value.trim().trim_end_matches('.').to_ascii_lowercase())
+        .filter(|value| !value.is_empty())
+}
+
+pub(super) fn is_isolated_file_host(settings: &RuntimeSettings, headers: &HeaderMap) -> bool {
+    if !settings.delivery.isolated_file_origin {
+        return false;
+    }
+    let Some(configured) = configured_file_host(settings) else {
+        return false;
+    };
+    let Some(request) = request_host(headers) else {
+        return false;
+    };
+    configured == request
+}
+
 pub(super) fn signed_internal_raw_url(
     state: &AppState,
     settings: &RuntimeSettings,
@@ -29,7 +97,7 @@ pub(super) fn signed_internal_raw_url(
         .filter(|secret| !secret.is_empty())?;
     let expires = util::now_ts() + settings.delivery.internal_url_ttl_seconds.max(1);
     let signature = sign_internal_file_url(secret, &file.public_id, expires);
-    let base = state.config.server.public_base_url.trim_end_matches('/');
+    let base = app_base_url(state);
     Some(format!(
         "{base}/internal/files/{}/raw?expires={expires}&signature={signature}",
         file.public_id

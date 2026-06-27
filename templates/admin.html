@@ -117,6 +117,13 @@
     <h4>Content policy</h4>
     <p><label>Allowed MIME types, one per line<br><textarea name="allowed_mime_types" rows="4">{{ settings.security.content_policy.allowed_mime_types | join("\n") }}</textarea></label></p>
     <p><label>Forced attachment MIME types, one per line<br><textarea name="forced_attachment_mime_types" rows="4">{{ settings.security.content_policy.forced_attachment_mime_types | join("\n") }}</textarea></label></p>
+    <p><label>Risky MIME mode<br>
+      <select name="risky_mime_mode">
+        <option value="attachment" {% if settings.security.content_policy.risky_mime_mode == "attachment" %}selected{% endif %}>attachment</option>
+        <option value="inline_on_isolated_origin" {% if settings.security.content_policy.risky_mime_mode == "inline_on_isolated_origin" %}selected{% endif %}>inline on isolated origin</option>
+        <option value="plaintext" {% if settings.security.content_policy.risky_mime_mode == "plaintext" %}selected{% endif %}>plaintext</option>
+      </select>
+    </label></p>
     <p><label>Max filename bytes<br><input type="number" min="1" name="max_filename_bytes" value="{{ settings.security.content_policy.max_filename_bytes }}"></label></p>
     <section x-show="featureUrlUpload" x-cloak>
       <h4>URL upload</h4>
@@ -134,9 +141,11 @@
     </details>
 
     <details class="settings-section" data-settings-section="delivery" x-show="activeTab === 'storage'" open>
-      <summary>Delivery</summary>
+    <summary>Delivery</summary>
     <p><label>Public file cache seconds<br><input type="number" min="0" name="delivery_public_cache_seconds" value="{{ settings.delivery.public_cache_seconds }}"></label></p>
     <p><label>Static asset cache seconds<br><input type="number" min="0" name="delivery_static_cache_seconds" value="{{ settings.delivery.static_cache_seconds }}"></label></p>
+    <p><label>Public file base URL<br><input type="url" name="delivery_public_file_base_url" value="{{ settings.delivery.public_file_base_url or "" }}" placeholder="https://files.example.test"></label></p>
+    <p><label><input type="checkbox" name="delivery_isolated_file_origin" {% if settings.delivery.isolated_file_origin %}checked{% endif %}> Isolated file origin</label></p>
     <p><label><input type="checkbox" name="delivery_signed_internal_urls" x-model="signedInternalUrls" {% if settings.delivery.signed_internal_urls %}checked{% endif %}> Signed internal raw file URLs</label></p>
     <section x-show="signedInternalUrls" x-cloak>
       <p class="secret-field"><label>Internal URL secret<br><input data-secret-input type="password" name="delivery_internal_url_secret" value="{{ settings.delivery.internal_url_secret or "" }}"></label> <button type="button" data-secret-toggle>Show</button></p>

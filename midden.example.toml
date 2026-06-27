@@ -114,11 +114,14 @@ rate_limit_backend = "memory"
 [security.content_policy]
 allowed_mime_types = []
 forced_attachment_mime_types = ["image/svg+xml", "text/html", "application/javascript", "text/javascript"]
+risky_mime_mode = "attachment"
 max_filename_bytes = 180
 
 [delivery]
 public_cache_seconds = 3600
 static_cache_seconds = 31536000
+# public_file_base_url = "https://files.example.test"
+isolated_file_origin = false
 signed_internal_urls = false
 # internal_url_secret = "change-me-long-random-secret"
 internal_url_ttl_seconds = 300

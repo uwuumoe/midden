@@ -480,6 +480,8 @@ pub(super) struct AdminSettingsForm {
     reject_mime_mismatch: Option<String>,
     delivery_public_cache_seconds: Option<String>,
     delivery_static_cache_seconds: Option<String>,
+    delivery_public_file_base_url: Option<String>,
+    delivery_isolated_file_origin: Option<String>,
     delivery_signed_internal_urls: Option<String>,
     delivery_internal_url_secret: Option<String>,
     delivery_internal_url_ttl_seconds: Option<String>,
@@ -502,6 +504,7 @@ pub(super) struct AdminSettingsForm {
     metrics_bearer_token: Option<String>,
     rate_limit_backend: String,
     forced_attachment_mime_types: Option<String>,
+    risky_mime_mode: String,
     allowed_mime_types: Option<String>,
     max_filename_bytes: Option<String>,
     expiry_allow_never: Option<String>,
@@ -640,6 +643,12 @@ pub(super) async fn admin_update_settings(
     security.content_policy.allowed_mime_types = lines(form.allowed_mime_types.as_deref());
     security.content_policy.forced_attachment_mime_types =
         lines(form.forced_attachment_mime_types.as_deref());
+    security.content_policy.risky_mime_mode = match form.risky_mime_mode.as_str() {
+        "attachment" => RiskyMimeMode::Attachment,
+        "inline_on_isolated_origin" => RiskyMimeMode::InlineOnIsolatedOrigin,
+        "plaintext" => RiskyMimeMode::Plaintext,
+        _ => return Err(AppError::BadRequest("invalid risky MIME mode".to_string())),
+    };
     security.content_policy.max_filename_bytes =
         parse_optional_usize(form.max_filename_bytes.as_deref())?
             .unwrap_or(security.content_policy.max_filename_bytes)
@@ -712,12 +721,19 @@ pub(super) async fn admin_update_settings(
     delivery.static_cache_seconds =
         parse_optional_u64(form.delivery_static_cache_seconds.as_deref())?
             .unwrap_or(delivery.static_cache_seconds);
+    delivery.public_file_base_url = nonempty(form.delivery_public_file_base_url.as_deref());
+    delivery.isolated_file_origin = form.delivery_isolated_file_origin.is_some();
     delivery.signed_internal_urls = form.delivery_signed_internal_urls.is_some();
     delivery.internal_url_secret = nonempty(form.delivery_internal_url_secret.as_deref());
     delivery.internal_url_ttl_seconds =
         parse_optional_i64(form.delivery_internal_url_ttl_seconds.as_deref())?
             .unwrap_or(delivery.internal_url_ttl_seconds)
             .max(1);
+    if delivery.isolated_file_origin && delivery.public_file_base_url.is_none() {
+        return Err(AppError::BadRequest(
+            "isolated file origin requires a public file base URL".to_string(),
+        ));
+    }
     if delivery.signed_internal_urls && delivery.internal_url_secret.is_none() {
         return Err(AppError::BadRequest(
             "signed internal URLs require a secret".to_string(),

@@ -157,6 +157,60 @@ async fn response_body(response: Response) -> String {
     .unwrap()
 }
 
+async fn file_delivery_state() -> AppState {
+    let mut config = crate::config::AppConfig::default();
+    config.database.url = "sqlite::memory:".to_string();
+    config.database.max_connections = 1;
+    config.server.public_base_url = "https://midden.example".to_string();
+    config.delivery.public_file_base_url = Some("https://files.midden.example".to_string());
+    config.delivery.isolated_file_origin = true;
+    config.storage.local.path =
+        std::env::temp_dir().join(format!("midden-file-delivery-test-{}", util::public_id()));
+    let state = AppState::new(config).await.unwrap();
+    state.db.migrate().await.unwrap();
+    state
+}
+
+async fn create_test_file(
+    state: &AppState,
+    public_id: &str,
+    filename: &str,
+    content_type: &str,
+    bytes: &'static [u8],
+) -> FileItem {
+    let bytes = Bytes::from_static(bytes);
+    let hash = util::sha256_hex_bytes(&bytes);
+    state
+        .db
+        .create_blob_if_missing(&hash, bytes.len() as i64, Some(content_type))
+        .await
+        .unwrap();
+    state.storage.put_blob(&hash, bytes.clone()).await.unwrap();
+    let extension = util::normalize_extension(Some(filename), Some(content_type));
+    state
+        .db
+        .create_file_item(NewFileItem {
+            id: &uuid::Uuid::new_v4().to_string(),
+            public_id,
+            blob_hash: &hash,
+            original_filename: Some(filename),
+            extension: extension.as_deref(),
+            content_type: Some(content_type),
+            size_bytes: bytes.len() as i64,
+            image_width: None,
+            image_height: None,
+            owner_user_id: None,
+            delete_token_hash: None,
+            expires_at: None,
+            visibility: "unlisted",
+            metadata_json: None,
+            thumbnail_hash: None,
+            state: "active",
+        })
+        .await
+        .unwrap()
+}
+
 async fn admin_session_state() -> (AppState, String) {
     let issuer = spawn_oidc_provider(serde_json::json!({
         "sub": "unused-ui-admin",
@@ -371,9 +425,242 @@ async fn admin_settings_renders_operator_controls() {
     assert!(body.contains("name=\"rate_limit_backend\""));
     assert!(body.contains("name=\"url_request_timeout_seconds\""));
     assert!(body.contains("name=\"forced_attachment_mime_types\""));
+    assert!(body.contains("name=\"risky_mime_mode\""));
+    assert!(body.contains("name=\"delivery_public_file_base_url\""));
+    assert!(body.contains("name=\"delivery_isolated_file_origin\""));
     assert!(body.contains("name=\"token_default_ttl_seconds\""));
     assert!(body.contains("name=\"thumbnail_max_dimension\""));
     assert!(body.contains("name=\"moderation_notify_webhook_url\""));
+}
+
+#[tokio::test]
+async fn file_delivery_uses_isolated_origin_for_generated_urls() {
+    let state = file_delivery_state().await;
+    let base = spawn_http_app(state.clone()).await;
+    let client = reqwest::Client::new();
+
+    let upload = client
+        .post(format!("{base}/api/v1/files"))
+        .multipart(
+            reqwest::multipart::Form::new().part(
+                "file",
+                reqwest::multipart::Part::bytes(b"isolated urls".to_vec())
+                    .file_name("clip.mp4")
+                    .mime_str("video/mp4")
+                    .unwrap(),
+            ),
+        )
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(upload.status(), StatusCode::OK);
+    let body: serde_json::Value = upload.json().await.unwrap();
+    assert!(
+        body["url"]
+            .as_str()
+            .unwrap()
+            .starts_with("https://files.midden.example/")
+    );
+    assert!(
+        body["raw_url"]
+            .as_str()
+            .unwrap()
+            .starts_with("https://files.midden.example/files/")
+    );
+}
+
+#[tokio::test]
+async fn file_delivery_restricts_routes_to_the_configured_host() {
+    let state = file_delivery_state().await;
+    create_test_file(
+        &state,
+        "filehost1",
+        "movie.mp4",
+        "video/mp4",
+        b"not really a movie",
+    )
+    .await;
+    let router = state.router();
+
+    let app_host_file = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/filehost1.mp4")
+                .header(header::HOST, "midden.example")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(app_host_file.status(), StatusCode::NOT_FOUND);
+
+    let file_host_app_route = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/")
+                .header(header::HOST, "files.midden.example")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(file_host_app_route.status(), StatusCode::NOT_FOUND);
+
+    let file_host_file = router
+        .oneshot(
+            Request::builder()
+                .uri("/filehost1.mp4")
+                .header(header::HOST, "files.midden.example")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(file_host_file.status(), StatusCode::OK);
+    assert_eq!(
+        file_host_file.headers()[header::CONTENT_DISPOSITION]
+            .to_str()
+            .unwrap(),
+        "inline; filename=\"movie.mp4\""
+    );
+}
+
+#[tokio::test]
+async fn file_delivery_keeps_risky_types_attachment_by_default() {
+    let state = file_delivery_state().await;
+    create_test_file(
+        &state,
+        "riskdef1",
+        "index.html",
+        "text/html",
+        b"<script>alert(1)</script>",
+    )
+    .await;
+
+    let response = state
+        .router()
+        .oneshot(
+            Request::builder()
+                .uri("/riskdef1.html")
+                .header(header::HOST, "files.midden.example")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response.headers()[header::CONTENT_DISPOSITION]
+            .to_str()
+            .unwrap(),
+        "attachment; filename=\"index.html\""
+    );
+}
+
+#[tokio::test]
+async fn file_delivery_can_inline_risky_types_only_on_isolated_origin() {
+    let state = file_delivery_state().await;
+    let mut security = state.settings().await.unwrap().security;
+    security.content_policy.risky_mime_mode = crate::config::RiskyMimeMode::InlineOnIsolatedOrigin;
+    state
+        .db
+        .set_json_setting("security", &security)
+        .await
+        .unwrap();
+    create_test_file(
+        &state,
+        "riskiso1",
+        "index.html",
+        "text/html",
+        b"<h1>inline</h1>",
+    )
+    .await;
+
+    let response = state
+        .router()
+        .oneshot(
+            Request::builder()
+                .uri("/riskiso1.html")
+                .header(header::HOST, "files.midden.example")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response.headers()[header::CONTENT_DISPOSITION]
+            .to_str()
+            .unwrap(),
+        "inline; filename=\"index.html\""
+    );
+    assert_eq!(
+        response.headers()[header::X_CONTENT_TYPE_OPTIONS]
+            .to_str()
+            .unwrap(),
+        "nosniff"
+    );
+    assert!(
+        response.headers()[header::CONTENT_SECURITY_POLICY]
+            .to_str()
+            .unwrap()
+            .contains("sandbox")
+    );
+}
+
+#[tokio::test]
+async fn file_delivery_can_serve_risky_types_as_plaintext() {
+    let state = file_delivery_state().await;
+    let mut security = state.settings().await.unwrap().security;
+    security.content_policy.risky_mime_mode = crate::config::RiskyMimeMode::Plaintext;
+    state
+        .db
+        .set_json_setting("security", &security)
+        .await
+        .unwrap();
+    create_test_file(
+        &state,
+        "risktext1",
+        "index.html",
+        "text/html",
+        b"<script>alert(1)</script>",
+    )
+    .await;
+
+    let response = state
+        .router()
+        .oneshot(
+            Request::builder()
+                .uri("/risktext1.html")
+                .header(header::HOST, "files.midden.example")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response.headers()[header::CONTENT_TYPE].to_str().unwrap(),
+        "text/plain; charset=utf-8"
+    );
+    assert_eq!(
+        response.headers()[header::CONTENT_DISPOSITION]
+            .to_str()
+            .unwrap(),
+        "inline; filename=\"index.html\""
+    );
+    assert_eq!(
+        response.headers()[header::X_CONTENT_TYPE_OPTIONS]
+            .to_str()
+            .unwrap(),
+        "nosniff"
+    );
 }
 
 #[tokio::test]
@@ -1619,17 +1906,17 @@ async fn test_local_login_disabled_blocks_endpoints() {
     assert_eq!(login_res.status(), StatusCode::FORBIDDEN);
 
     // 2. GET /register returns 403 Forbidden
-    let reg_form_res = client
-        .get(format!("{base}/register"))
-        .send()
-        .await
-        .unwrap();
+    let reg_form_res = client.get(format!("{base}/register")).send().await.unwrap();
     assert_eq!(reg_form_res.status(), StatusCode::FORBIDDEN);
 
     // 3. POST /register returns 403 Forbidden
     let reg_res = client
         .post(format!("{base}/register"))
-        .form(&[("email", "test@example.com"), ("username", "test"), ("password", "password")])
+        .form(&[
+            ("email", "test@example.com"),
+            ("username", "test"),
+            ("password", "password"),
+        ])
         .send()
         .await
         .unwrap();

@@ -181,7 +181,9 @@ async fn owner_command(config: AppConfig, command: OwnerCommand) -> anyhow::Resu
                 Some(p) => Some(util::hash_password(&p)?),
                 None => None,
             };
-            let user = db.upsert_owner(&email, &username, password_hash.as_deref()).await?;
+            let user = db
+                .upsert_owner(&email, &username, password_hash.as_deref())
+                .await?;
             println!("owner ready: {} ({})", user.username, user.email);
         }
         OwnerCommand::ResetPassword { email, password } => {
@@ -457,7 +459,11 @@ async fn user_command(config: AppConfig, command: UserCommand) -> anyhow::Result
             let user = db.user_by_email(&email).await?;
             let parsed_role = db::Role::parse_form(&role)?;
             db.set_user_role(&user.id, parsed_role).await?;
-            println!("user role updated: {} is now {}", email, parsed_role.as_str());
+            println!(
+                "user role updated: {} is now {}",
+                email,
+                parsed_role.as_str()
+            );
         }
     }
     Ok(())

@@ -137,12 +137,16 @@ pub(super) async fn url_upload(
 pub(super) async fn file_slug(
     State(state): State<AppState>,
     jar: CookieJar,
+    headers: HeaderMap,
     Path(slug): Path<String>,
 ) -> AppResult<Response> {
     let Some((public_id, _extension)) = util::split_slug(&slug) else {
         return Err(AppError::NotFound);
     };
     let settings = state.settings().await?;
+    if settings.delivery.isolated_file_origin && !is_isolated_file_host(&settings, &headers) {
+        return Err(AppError::NotFound);
+    }
     let user = current_user(&state, &jar).await?;
     let file = match state.db.active_file_by_public_id(public_id).await? {
         Some(file) => file,
@@ -171,19 +175,17 @@ pub(super) async fn file_slug(
     )?;
     if settings.features.preview_pages {
         let preview = file_preview_context(&state, &file).await?;
-        let base = state.config.server.public_base_url.trim_end_matches('/');
-        let slug = util::slug_with_extension(&file.public_id, file.extension.as_deref());
         let page = serde_json::json!({
             "file": file,
             "raw_url": format!("/files/{}/raw", public_id),
-            "absolute_url": format!("{base}/{slug}"),
-            "absolute_raw_url": format!("{base}/files/{public_id}/raw"),
+            "absolute_url": file_url(&state, &settings, &file),
+            "absolute_raw_url": raw_file_url(&state, &settings, &file),
             "human_size": util::human_bytes(file.size_bytes),
             "preview": preview,
         });
         Ok(render(&state, "file_preview.html", &settings, user.as_ref(), page)?.into_response())
     } else {
-        serve_file(&state, file).await
+        serve_file(&state, &settings, &headers, file).await
     }
 }
 
@@ -233,9 +235,13 @@ fn render_unavailable_item(
 pub(super) async fn raw_file(
     State(state): State<AppState>,
     jar: CookieJar,
+    headers: HeaderMap,
     Path(id): Path<String>,
 ) -> AppResult<Response> {
     let settings = state.settings().await?;
+    if settings.delivery.isolated_file_origin && !is_isolated_file_host(&settings, &headers) {
+        return Err(AppError::NotFound);
+    }
     let user = current_user(&state, &jar).await?;
     let file = state
         .db
@@ -248,7 +254,7 @@ pub(super) async fn raw_file(
         file.owner_user_id.as_deref(),
         &file.visibility,
     )?;
-    serve_file(&state, file).await
+    serve_file(&state, &settings, &headers, file).await
 }
 
 #[derive(Debug, Deserialize)]
@@ -259,6 +265,7 @@ pub(super) struct InternalFileQuery {
 
 pub(super) async fn internal_raw_file(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Path(id): Path<String>,
     Query(query): Query<InternalFileQuery>,
 ) -> AppResult<Response> {
@@ -284,11 +291,15 @@ pub(super) async fn internal_raw_file(
         .active_file_by_public_id(&id)
         .await?
         .ok_or(AppError::NotFound)?;
-    serve_file(&state, file).await
+    serve_file(&state, &settings, &headers, file).await
 }
 
-async fn serve_file(state: &AppState, file: FileItem) -> AppResult<Response> {
-    let settings = state.settings().await?;
+async fn serve_file(
+    state: &AppState,
+    settings: &RuntimeSettings,
+    headers: &HeaderMap,
+    file: FileItem,
+) -> AppResult<Response> {
     use futures_util::StreamExt;
     let stream = state
         .storage
@@ -296,10 +307,23 @@ async fn serve_file(state: &AppState, file: FileItem) -> AppResult<Response> {
         .await?
         .map(|res| res.map_err(axum::Error::new));
     let body = axum::body::Body::from_stream(stream);
-    let content_type = file
+    let stored_content_type = file
         .content_type
         .as_deref()
-        .unwrap_or("application/octet-stream")
+        .unwrap_or("application/octet-stream");
+    let risky_type = is_risky_mime(settings, stored_content_type);
+    let isolated_file_host = is_isolated_file_host(settings, headers);
+    let plaintext = risky_type
+        && matches!(
+            settings.security.content_policy.risky_mime_mode,
+            RiskyMimeMode::Plaintext
+        );
+    let response_content_type = if plaintext {
+        "text/plain; charset=utf-8"
+    } else {
+        stored_content_type
+    };
+    let content_type = response_content_type
         .parse::<HeaderValue>()
         .unwrap_or_else(|_| HeaderValue::from_static("application/octet-stream"));
     let mut response = body.into_response();
@@ -310,32 +334,20 @@ async fn serve_file(state: &AppState, file: FileItem) -> AppResult<Response> {
     response
         .headers_mut()
         .insert(header::CONTENT_TYPE, content_type);
-    if let Some(filename) = &file.original_filename {
-        let forced_attachment = file.content_type.as_deref().is_some_and(|content_type| {
-            settings
-                .security
-                .content_policy
-                .forced_attachment_mime_types
-                .iter()
-                .any(|forced| forced.eq_ignore_ascii_case(content_type))
-        });
-        let disposition_kind = if forced_attachment {
-            "attachment"
-        } else {
-            match settings.security.content_disposition {
-                ContentDispositionMode::Inline => "inline",
-                ContentDispositionMode::Attachment => "attachment",
-            }
-        };
-        let disposition = format!(
-            "{disposition_kind}; filename=\"{}\"",
-            filename.replace('"', "")
-        );
-        if let Ok(value) = HeaderValue::from_str(&disposition) {
-            response
-                .headers_mut()
-                .insert(header::CONTENT_DISPOSITION, value);
-        }
+    let filename = file
+        .original_filename
+        .as_deref()
+        .unwrap_or(&file.public_id)
+        .replace('"', "");
+    let disposition_kind = file_disposition_kind(settings, risky_type, isolated_file_host);
+    let disposition = format!("{disposition_kind}; filename=\"{filename}\"");
+    if let Ok(value) = HeaderValue::from_str(&disposition) {
+        response
+            .headers_mut()
+            .insert(header::CONTENT_DISPOSITION, value);
+    }
+    if plaintext || isolated_file_host {
+        insert_file_security_headers(&mut response, isolated_file_host);
     }
     insert_cache_control(
         &mut response,
@@ -344,4 +356,55 @@ async fn serve_file(state: &AppState, file: FileItem) -> AppResult<Response> {
     );
     state.metrics.served_files.inc();
     Ok(response)
+}
+
+fn is_risky_mime(settings: &RuntimeSettings, content_type: &str) -> bool {
+    settings
+        .security
+        .content_policy
+        .forced_attachment_mime_types
+        .iter()
+        .any(|forced| forced.eq_ignore_ascii_case(content_type))
+}
+
+fn file_disposition_kind(
+    settings: &RuntimeSettings,
+    risky_type: bool,
+    isolated_file_host: bool,
+) -> &'static str {
+    if risky_type {
+        return match settings.security.content_policy.risky_mime_mode {
+            RiskyMimeMode::Attachment => "attachment",
+            RiskyMimeMode::InlineOnIsolatedOrigin if isolated_file_host => "inline",
+            RiskyMimeMode::InlineOnIsolatedOrigin => "attachment",
+            RiskyMimeMode::Plaintext => "inline",
+        };
+    }
+    match settings.security.content_disposition {
+        ContentDispositionMode::Inline => "inline",
+        ContentDispositionMode::Attachment => "attachment",
+    }
+}
+
+fn insert_file_security_headers(response: &mut Response, isolated_file_host: bool) {
+    response.headers_mut().insert(
+        header::X_CONTENT_TYPE_OPTIONS,
+        HeaderValue::from_static("nosniff"),
+    );
+    response.headers_mut().insert(
+        header::REFERRER_POLICY,
+        HeaderValue::from_static("no-referrer"),
+    );
+    response.headers_mut().insert(
+        HeaderName::from_static("cross-origin-resource-policy"),
+        HeaderValue::from_static("cross-origin"),
+    );
+    if isolated_file_host {
+        response.headers_mut().insert(
+            header::CONTENT_SECURITY_POLICY,
+            HeaderValue::from_static(
+                "default-src 'none'; sandbox; style-src 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; frame-ancestors 'none'",
+            ),
+        );
+    }
 }

@@ -238,16 +238,14 @@ fn api_file_item(
     settings: &RuntimeSettings,
     file: &FileItem,
 ) -> serde_json::Value {
-    let base = state.config.server.public_base_url.trim_end_matches('/');
-    let slug = util::slug_with_extension(&file.public_id, file.extension.as_deref());
-    let raw_url = format!("{base}/files/{}/raw", file.public_id);
+    let raw_url = raw_file_url(state, settings, file);
     let metadata = file
         .metadata_json
         .as_deref()
         .and_then(|value| serde_json::from_str::<serde_json::Value>(value).ok());
     serde_json::json!({
         "id": file.public_id,
-        "url": format!("{base}/{slug}"),
+        "url": file_url(state, settings, file),
         "raw_url": raw_url.clone(),
         "internal_url": signed_internal_raw_url(state, settings, file),
         "thumbnail_url": file.thumbnail_hash.as_ref().map(|_| raw_url),
