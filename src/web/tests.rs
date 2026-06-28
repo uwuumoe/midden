@@ -775,6 +775,116 @@ async fn file_delivery_can_serve_risky_types_as_plaintext() {
 }
 
 #[tokio::test]
+async fn file_delivery_handles_range_requests() {
+    let state = file_delivery_state().await;
+    create_test_file(
+        &state,
+        "rangetest",
+        "video.mp4",
+        "video/mp4",
+        b"0123456789abcdef",
+    )
+    .await;
+    let router = state.router();
+
+    // 1. Check full response (200 OK) with Accept-Ranges
+    let response = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/rangetest.mp4")
+                .header(header::HOST, "files.midden.example")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response.headers().get(header::ACCEPT_RANGES).unwrap().to_str().unwrap(),
+        "bytes"
+    );
+    assert_eq!(
+        response.headers().get(header::CONTENT_LENGTH).unwrap().to_str().unwrap(),
+        "16"
+    );
+    let body = response_body(response).await;
+    assert_eq!(body, "0123456789abcdef");
+
+    // 2. Check range request (206 Partial Content) - Range: bytes=0-4
+    let response = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/rangetest.mp4")
+                .header(header::HOST, "files.midden.example")
+                .header(header::RANGE, "bytes=0-4")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::PARTIAL_CONTENT);
+    assert_eq!(
+        response.headers().get(header::ACCEPT_RANGES).unwrap().to_str().unwrap(),
+        "bytes"
+    );
+    assert_eq!(
+        response.headers().get(header::CONTENT_RANGE).unwrap().to_str().unwrap(),
+        "bytes 0-4/16"
+    );
+    assert_eq!(
+        response.headers().get(header::CONTENT_LENGTH).unwrap().to_str().unwrap(),
+        "5"
+    );
+    let body = response_body(response).await;
+    assert_eq!(body, "01234");
+
+    // 3. Check range request (206 Partial Content) - Range: bytes=10-
+    let response = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/rangetest.mp4")
+                .header(header::HOST, "files.midden.example")
+                .header(header::RANGE, "bytes=10-")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::PARTIAL_CONTENT);
+    assert_eq!(
+        response.headers().get(header::CONTENT_RANGE).unwrap().to_str().unwrap(),
+        "bytes 10-15/16"
+    );
+    assert_eq!(
+        response.headers().get(header::CONTENT_LENGTH).unwrap().to_str().unwrap(),
+        "6"
+    );
+    let body = response_body(response).await;
+    assert_eq!(body, "abcdef");
+
+    // 4. Check out of bounds range request (416 Range Not Satisfiable) - Range: bytes=20-30
+    let response = router
+        .oneshot(
+            Request::builder()
+                .uri("/rangetest.mp4")
+                .header(header::HOST, "files.midden.example")
+                .header(header::RANGE, "bytes=20-30")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::RANGE_NOT_SATISFIABLE);
+    assert_eq!(
+        response.headers().get(header::CONTENT_RANGE).unwrap().to_str().unwrap(),
+        "bytes */16"
+    );
+}
+
+#[tokio::test]
 async fn index_page_exposes_selected_file_status() {
     let issuer = spawn_oidc_provider(serde_json::json!({
         "sub": "unused-selected-file",

@@ -5,7 +5,7 @@ use futures_util::StreamExt;
 use futures_util::stream::BoxStream;
 use object_store::{
     ObjectStore, ObjectStoreExt, aws::AmazonS3Builder, local::LocalFileSystem,
-    path::Path as ObjectPath,
+    path::Path as ObjectPath, GetOptions, GetRange,
 };
 
 use crate::config::{AppConfig, StorageBackend};
@@ -84,6 +84,20 @@ impl BlobStorage {
     ) -> anyhow::Result<BoxStream<'static, object_store::Result<Bytes>>> {
         let path = self.object_path(hash);
         let get_result = self.store.get(&path).await?;
+        Ok(get_result.into_stream())
+    }
+
+    pub async fn get_blob_range_stream(
+        &self,
+        hash: &str,
+        range: GetRange,
+    ) -> anyhow::Result<BoxStream<'static, object_store::Result<Bytes>>> {
+        let path = self.object_path(hash);
+        let options = GetOptions {
+            range: Some(range),
+            ..Default::default()
+        };
+        let get_result = self.store.get_opts(&path, options).await?;
         Ok(get_result.into_stream())
     }
 

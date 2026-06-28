@@ -315,12 +315,73 @@ async fn serve_file(
     file: FileItem,
 ) -> AppResult<Response> {
     use futures_util::StreamExt;
-    let stream = state
-        .storage
-        .get_blob_stream(&file.blob_hash)
-        .await?
-        .map(|res| res.map_err(axum::Error::new));
-    let body = axum::body::Body::from_stream(stream);
+    use headers::HeaderMapExt;
+
+    let total_len = file.size_bytes.max(0) as u64;
+    let mut is_partial = false;
+    let mut content_range_val = None;
+    let mut content_length_val = total_len;
+
+    let body = if total_len > 0 {
+        if let Some(range_header) = headers.typed_get::<headers::Range>() {
+            let ranges: Vec<_> = range_header.satisfiable_ranges(total_len).collect();
+            if ranges.is_empty() {
+                let mut response = StatusCode::RANGE_NOT_SATISFIABLE.into_response();
+                response.headers_mut().insert(
+                    header::CONTENT_RANGE,
+                    HeaderValue::from_str(&format!("bytes */{total_len}")).unwrap(),
+                );
+                return Ok(response);
+            }
+            let (start_bound, end_bound) = ranges[0];
+            let start = match start_bound {
+                std::ops::Bound::Included(n) => n,
+                std::ops::Bound::Excluded(n) => n + 1,
+                std::ops::Bound::Unbounded => 0,
+            };
+            let end = match end_bound {
+                std::ops::Bound::Included(n) => n,
+                std::ops::Bound::Excluded(n) => n - 1,
+                std::ops::Bound::Unbounded => total_len.saturating_sub(1),
+            };
+
+            if start <= end && end < total_len {
+                is_partial = true;
+                content_length_val = end - start + 1;
+                content_range_val = Some(format!("bytes {start}-{end}/{total_len}"));
+
+                let range_opt = object_store::GetRange::Bounded(start..(end + 1));
+                let stream = state
+                    .storage
+                    .get_blob_range_stream(&file.blob_hash, range_opt)
+                    .await?
+                    .map(|res| res.map_err(axum::Error::new));
+                axum::body::Body::from_stream(stream)
+            } else {
+                let mut response = StatusCode::RANGE_NOT_SATISFIABLE.into_response();
+                response.headers_mut().insert(
+                    header::CONTENT_RANGE,
+                    HeaderValue::from_str(&format!("bytes */{total_len}")).unwrap(),
+                );
+                return Ok(response);
+            }
+        } else {
+            let stream = state
+                .storage
+                .get_blob_stream(&file.blob_hash)
+                .await?
+                .map(|res| res.map_err(axum::Error::new));
+            axum::body::Body::from_stream(stream)
+        }
+    } else {
+        let stream = state
+            .storage
+            .get_blob_stream(&file.blob_hash)
+            .await?
+            .map(|res| res.map_err(axum::Error::new));
+        axum::body::Body::from_stream(stream)
+    };
+
     let stored_content_type = file
         .content_type
         .as_deref()
@@ -341,9 +402,21 @@ async fn serve_file(
         .parse::<HeaderValue>()
         .unwrap_or_else(|_| HeaderValue::from_static("application/octet-stream"));
     let mut response = body.into_response();
+    if is_partial {
+        *response.status_mut() = StatusCode::PARTIAL_CONTENT;
+        if let Some(cr) = content_range_val {
+            if let Ok(val) = HeaderValue::from_str(&cr) {
+                response.headers_mut().insert(header::CONTENT_RANGE, val);
+            }
+        }
+    }
+    response.headers_mut().insert(
+        header::ACCEPT_RANGES,
+        HeaderValue::from_static("bytes"),
+    );
     response.headers_mut().insert(
         header::CONTENT_LENGTH,
-        HeaderValue::from(file.size_bytes.max(0) as u64),
+        HeaderValue::from(content_length_val),
     );
     response
         .headers_mut()
