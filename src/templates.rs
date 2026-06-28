@@ -41,6 +41,7 @@ impl Templates {
             settings => settings,
             current_user => current_user,
             page => value,
+            version => env!("CARGO_PKG_VERSION"),
         })?)
     }
 }
