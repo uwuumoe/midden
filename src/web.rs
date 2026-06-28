@@ -112,7 +112,13 @@ async fn request_context_middleware(
 pub fn router(state: AppState) -> Router {
     let metrics_state = state.clone();
     let csrf_state = state.clone();
-    Router::new()
+
+    let file_routes = Router::new()
+        .route("/files/{id}/raw", get(raw_file))
+        .route("/internal/files/{id}/raw", get(internal_raw_file))
+        .route("/{slug}", get(file_slug));
+
+    let app_routes = Router::new()
         .route("/", get(index).post(upload_form_file.layer(DefaultBodyLimit::disable())))
         .route("/url-upload", get(url_upload_form).post(url_upload))
         .route("/static/{*path}", get(static_asset))
@@ -147,8 +153,6 @@ pub fn router(state: AppState) -> Router {
         .route("/p/{id}/edit", get(edit_paste_form).post(update_paste))
         .route("/p/{id}", get(show_paste))
         .route("/p/{id}/raw", get(raw_paste))
-        .route("/files/{id}/raw", get(raw_file))
-        .route("/internal/files/{id}/raw", get(internal_raw_file))
         .route("/report/{kind}/{id}", get(report_form).post(create_report))
         .route("/delete/{kind}/{id}", get(delete_form).post(delete_item))
         .route("/claim/{kind}/{id}", get(claim_form).post(claim_item))
@@ -206,8 +210,11 @@ pub fn router(state: AppState) -> Router {
             "/admin/items/{kind}/{id}",
             get(admin_item).post(admin_update_item),
         )
-        .route("/{slug}", get(file_slug))
-        .layer(CompressionLayer::new())
+        .layer(CompressionLayer::new());
+
+    Router::new()
+        .merge(app_routes)
+        .merge(file_routes)
         .layer(middleware::from_fn(api_error_middleware))
         .layer(middleware::from_fn_with_state(
             state.clone(),
