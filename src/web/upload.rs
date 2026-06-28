@@ -222,7 +222,8 @@ fn resolved_content_type(
         }
     }
 
-    Ok(sniffed
+    let specific_sniffed = sniffed.filter(|mime| mime != "application/octet-stream");
+    Ok(specific_sniffed
         .or(declared)
         .or(extension_guess)
         .unwrap_or_else(|| "application/octet-stream".to_string()))
@@ -245,6 +246,43 @@ fn reject_mime_mismatch(sniffed: &str, candidate: &str, source: &str) -> AppResu
         )));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn settings() -> RuntimeSettings {
+        RuntimeSettings::from_config(&crate::config::AppConfig::default())
+    }
+
+    #[test]
+    fn resolved_content_type_keeps_declared_media_type_when_sniff_is_generic_binary() {
+        let uploaded = UploadedBytes {
+            bytes: Bytes::from_static(&[0x00, 0x01, 0x02, 0x03]),
+            filename: Some("clip.mp4".to_string()),
+            content_type: Some("video/mp4".to_string()),
+        };
+
+        assert_eq!(
+            resolved_content_type(&settings(), &uploaded).unwrap(),
+            "video/mp4"
+        );
+    }
+
+    #[test]
+    fn resolved_content_type_uses_filename_type_when_sniff_is_generic_binary() {
+        let uploaded = UploadedBytes {
+            bytes: Bytes::from_static(&[0x00, 0x01, 0x02, 0x03]),
+            filename: Some("image.webp".to_string()),
+            content_type: None,
+        };
+
+        assert_eq!(
+            resolved_content_type(&settings(), &uploaded).unwrap(),
+            "image/webp"
+        );
+    }
 }
 
 pub(super) async fn read_upload_form(

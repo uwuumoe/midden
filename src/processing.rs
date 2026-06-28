@@ -2,20 +2,8 @@ use bytes::Bytes;
 use std::io::Cursor;
 
 pub fn sniff_mime(bytes: &[u8]) -> Option<&'static str> {
-    if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
-        return Some("image/png");
-    }
-    if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
-        return Some("image/gif");
-    }
-    if bytes.starts_with(&[0xff, 0xd8, 0xff]) {
-        return Some("image/jpeg");
-    }
-    if bytes.starts_with(b"%PDF-") {
-        return Some("application/pdf");
-    }
-    if bytes.starts_with(b"PK\x03\x04") {
-        return Some("application/zip");
+    if let Some(kind) = infer::get(bytes) {
+        return Some(kind.mime_type());
     }
     if bytes
         .iter()
@@ -146,6 +134,14 @@ mod tests {
         assert_eq!(sniff_mime(b"\x89PNG\r\n\x1a\nrest"), Some("image/png"));
         assert_eq!(sniff_mime(b"GIF89arest"), Some("image/gif"));
         assert_eq!(sniff_mime(&[0xff, 0xd8, 0xff, 0xe0]), Some("image/jpeg"));
+        assert_eq!(
+            sniff_mime(b"RIFF\xce\x14\x00\x00WEBPVP8Xrest"),
+            Some("image/webp")
+        );
+        assert_eq!(
+            sniff_mime(b"\x00\x00\x00\x20ftypisom\x00\x00\x02\x00isomav01iso2mp41"),
+            Some("video/mp4")
+        );
         assert_eq!(sniff_mime(b"plain text"), Some("text/plain"));
     }
 
