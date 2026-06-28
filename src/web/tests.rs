@@ -2,6 +2,7 @@ use super::*;
 use crate::jobs;
 use axum::body::Body;
 use http::Request;
+use http_body_util::BodyExt;
 use std::sync::Arc;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
@@ -1656,6 +1657,38 @@ async fn uploads_uses_configured_temp_dir() {
 
     assert!(custom_temp.exists());
     let _ = tokio::fs::remove_dir_all(&custom_temp).await;
+}
+
+#[tokio::test]
+async fn upload_large_file() {
+    let issuer = spawn_oidc_provider(serde_json::json!({
+        "sub": "unused-large-file",
+        "email": "unused-large-file@example.test",
+        "groups": ["admins"]
+    }))
+    .await;
+    let state = test_state(issuer).await;
+    let base = spawn_http_app(state.clone()).await;
+    let client = reqwest::Client::new();
+
+    let large_data = vec![0u8; 2_621_440]; // 2.5 MB
+
+    let upload = client
+        .post(format!("{base}/api/v1/files"))
+        .multipart(
+            reqwest::multipart::Form::new().part(
+                "file",
+                reqwest::multipart::Part::bytes(large_data)
+                    .file_name("large.bin")
+                    .mime_str("application/octet-stream")
+                    .unwrap(),
+            ),
+        )
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(upload.status(), StatusCode::OK);
 }
 
 #[tokio::test]

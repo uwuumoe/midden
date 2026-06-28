@@ -3,7 +3,8 @@ use std::{collections::BTreeMap, net::IpAddr, path::PathBuf, time::Instant};
 use axum::{
     Router,
     body::Bytes,
-    extract::{Multipart, Path, Query, Request, State},
+    extract::{DefaultBodyLimit, Multipart, Path, Query, Request, State},
+    handler::Handler,
     http::{HeaderMap, HeaderName, HeaderValue, StatusCode, header},
     middleware::{self, Next},
     response::{Html, IntoResponse, Redirect, Response},
@@ -12,7 +13,6 @@ use axum::{
 use axum_extra::extract::CookieJar;
 use axum_extra::extract::cookie::{Cookie, SameSite};
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
-use http_body_util::BodyExt;
 use prometheus_client::encoding::text::encode;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -113,7 +113,7 @@ pub fn router(state: AppState) -> Router {
     let metrics_state = state.clone();
     let csrf_state = state.clone();
     Router::new()
-        .route("/", get(index).post(upload_form_file))
+        .route("/", get(index).post(upload_form_file.layer(DefaultBodyLimit::disable())))
         .route("/url-upload", get(url_upload_form).post(url_upload))
         .route("/static/{*path}", get(static_asset))
         .route("/browse", get(public_browse))
@@ -125,7 +125,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/openapi.json", get(api_openapi))
         .route("/api/v1/me/files", get(api_list_my_files))
         .route("/api/v1/me/pastes", get(api_list_my_pastes))
-        .route("/api/v1/files", post(api_upload_file))
+        .route("/api/v1/files", post(api_upload_file.layer(DefaultBodyLimit::disable())))
         .route("/api/v1/files/{id}", delete(api_delete_file))
         .route("/api/v1/pastes", post(api_create_paste))
         .route("/api/v1/pastes/{id}", delete(api_delete_paste))
